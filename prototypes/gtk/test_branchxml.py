@@ -99,7 +99,7 @@ class InputTest(unittest.TestCase):
             win.request_edit(2)
             win.entry.set_text("茶 & 水")
             win.pages.set_current_page(1)
-            buf = win.source_view.get_buffer()
+            buf = win.source.buffer
             self.assertIn("茶 &amp; 水", buf.get_text(*buf.get_bounds(), False))
             self.assertEqual(path.read_bytes(), original)
             win.lookup_action("check").activate(None)
@@ -131,6 +131,124 @@ class InputTest(unittest.TestCase):
             self.assertEqual(win.document.path, other)
             self.assertEqual(win.inspector.result[1].get_text(), invalid.name)
             self.assertEqual(win.inspector.result[2].get_text(), "2")
+
+    def test_nested_expansion_survives_closing_ancestors(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            task = "<task><params><param n='1'/><param n='2'/></params></task>"
+            path.write_text("<recipe><tasks>" + task * 2 + "</tasks></recipe>")
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            root = win.rows.get_child_row(0)
+            tasks = root.get_child_row(0)
+            first, second = tasks.get_child_row(0), tasks.get_child_row(1)
+            first.get_child_row(0).set_expanded(False)
+            first.set_expanded(False)
+            second.get_child_row(0).get_child_row(1).set_expanded(False)
+
+            def visible():
+                return [(r.get_item().path, r.get_expanded()) for r in win.rows]
+
+            before = visible()
+            for parent in (tasks, root, root):
+                parent.set_expanded(False)
+                parent.set_expanded(True)
+                self.assertEqual(visible(), before)
+            first = root.get_child_row(0).get_child_row(0)
+            first.set_expanded(True)
+            self.assertFalse(first.get_child_row(0).get_expanded())
+            first.get_child_row(0).set_expanded(True)
+            self.assertTrue(first.get_child_row(0).get_child_row(1).get_expanded())
+            self.assertFalse(win.document.dirty)
+            self.assertFalse(win.document.undo_stack)
+
+    def test_source_colors_and_literal_search(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            xml = ("<?xml version='1.0' encoding=\"UTF-8\"?>\r\n"
+                   "<配方 地点='导航.A' n=\"42\" enabled='true'>\r\n"
+                   "<task>导航.a &amp; 水</task><!-- <假 值='42'/> -->\r\n"
+                   "<summary><![CDATA[起点:导航.A <标记>]]></summary></配方>\r\n")
+            path.write_bytes(xml.encode())
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            win.lookup_action("find-source").activate(None)
+            page = win.source
+            buf = page.buffer
+            self.assertEqual(win.pages.get_current_page(), 1)
+            self.assertEqual(buf.get_text(*buf.get_bounds(), True), xml)
+
+            def has_tag(offset, name):
+                return buf.get_iter_at_offset(offset).has_tag(buf.get_tag_table().lookup(name))
+
+            wait_for(lambda: has_tag(xml.rindex("</配方"), "element"))
+            for token, tag in (("encoding", "attribute"), ("UTF-8", "string"),
+                               ("配方", "element"), ("地点", "attribute"), ("导航.A", "string"),
+                               ("42", "number"), ("true", "boolean"), ("水", "string"),
+                               ("&amp;", "markup"), ("假", "comment"), ("CDATA", "markup"),
+                               ("<标记>", "string")):
+                self.assertTrue(has_tag(xml.index(token), tag), token)
+            positions = (xml.index("导航.A"), xml.index("导航.a"), xml.rindex("导航.A"))
+            page.search_entry.set_text("导航.a")
+            for pos in positions:
+                self.assertTrue(has_tag(pos, "match"))
+            self.assertEqual(page.count.get_text(), "1 / 3")
+            page.search_entry.emit("activate")
+            self.assertTrue(has_tag(positions[1], "current-match"))
+            page.search_key(None, Gdk.KEY_F3, 0, Gdk.ModifierType.SHIFT_MASK)
+            page.buttons[0].emit("clicked")
+            self.assertTrue(has_tag(positions[2], "current-match"))
+            page.search_key(None, Gdk.KEY_F3, 0, 0)
+            self.assertEqual(page.count.get_text(), "1 / 3")
+            page.search_entry.set_text("导航.*")
+            self.assertEqual(page.count.get_text(), "无匹配")
+            self.assertFalse(page.buttons[1].get_sensitive())
+            self.assertFalse(has_tag(positions[0], "match"))
+
+            page.search_entry.set_text("导航")
+            win.pages.set_current_page(0)
+            win.request_edit(1)
+            win.entry.set_text("新站点")
+            win.find_source()
+            self.assertEqual(page.count.get_text(), "1 / 2")
+            self.assertTrue(has_tag(page.xml.index("新站点"), "string"))
+            win.lookup_action("undo").activate(None)
+            self.assertEqual(page.count.get_text(), "1 / 3")
+            page.search_entry.emit("stop-search")
+            self.assertEqual(page.search_entry.get_text(), "")
+            self.assertFalse(has_tag(positions[0], "current-match"))
+            self.assertTrue(has_tag(positions[0], "string"))
+            self.assertFalse(win.document.dirty)
+            self.assertEqual(path.read_bytes(), xml.encode())
+
+    def test_open_another_file_while_source_highlights_are_pending(self):
+        with TemporaryDirectory() as temp:
+            one, two = Path(temp) / "one.xml", Path(temp) / "two.xml"
+            one.write_text("<a>" + "<v>old</v>" * 2000 + "</a>")
+            two.write_text("<next key='新值'/>")
+            win = RecipeWindow(self.app, Document(one))
+            self.addCleanup(win.destroy)
+            win.present()
+            win.find_source()
+            page = win.source
+            page.search_entry.set_text("old")
+            self.assertEqual(page.count.get_text(), "1 / 2000")
+            win.open_path(two)
+            self.assertEqual(page.search_entry.get_text(), "")
+            page.search_entry.set_text("新值")
+            buf = page.buffer
+            wait_for(page.view.get_mapped)
+            clock = page.view.get_frame_clock()
+            frame = clock.get_frame_counter()
+            page.view.queue_draw()
+            wait_for(lambda: clock.get_frame_counter() > frame)
+            last = buf.get_iter_at_offset(page.xml.index("新值"))
+            self.assertTrue(last.has_tag(page.current_hit))
+            self.assertFalse(buf.get_start_iter().has_tag(page.hit))
+            self.assertEqual(page.count.get_text(), "1 / 1")
+            self.assertEqual(buf.get_text(*buf.get_bounds(), True), two.read_text())
 
     def test_context_menu_targets_clicked_row(self):
         with TemporaryDirectory() as temp:

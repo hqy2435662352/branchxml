@@ -13,6 +13,7 @@ class Chrome(Gtk.Box):
         for name, callback in (
                 ("undo", lambda: window.history(False)), ("redo", lambda: window.history(True)),
                 ("address", self.focus_address), ("check", window.check_xml),
+                ("find-source", window.find_source),
                 ("tree", lambda: window.pages.set_current_page(0)),
                 ("source", lambda: window.pages.set_current_page(1)),
                 ("inspector", lambda: window.inspector.set_visible(not window.inspector.get_visible()))):
@@ -20,11 +21,12 @@ class Chrome(Gtk.Box):
             action.connect("activate", lambda *_, run=callback: run())
             window.add_action(action)
         app.set_accels_for_action("win.address", ["<Control>l"])
+        app.set_accels_for_action("win.find-source", ["<Control>f"])
 
         bar = Gio.Menu()
         for title, commands in (
                 ("文件", (("打开…", "open"), ("保存", "save"), ("另存为…", "save-as"))),
-                ("编辑", (("撤销", "undo"), ("重做", "redo"))),
+                ("编辑", (("撤销", "undo"), ("重做", "redo"), ("查找 XML 源码…", "find-source"))),
                 ("视图", (("树视图", "tree"), ("XML 源码", "source"), ("定位到文件路径", "address"),
                         ("显示或隐藏检查面板", "inspector"), ("检查 XML", "check")))):
             menu = Gio.Menu()

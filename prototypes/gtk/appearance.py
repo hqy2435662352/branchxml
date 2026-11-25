@@ -192,6 +192,20 @@ CSS = """
   background: #ffffff;
   color: #1b3b59;
 }
+.branchxml .bx-source text {
+  background-color: #ffffff;
+  color: #202632;
+}
+.branchxml .bx-find {
+  padding: 2px 6px;
+  background: #f2f5f8;
+  color: #304154;
+}
+.branchxml .bx-find button,
+.branchxml .bx-find searchentry {
+  min-height: 25px;
+  padding: 2px 6px;
+}
 .branchxml .bx-status {
   min-height: 22px;
   padding: 1px 7px;
@@ -253,14 +267,15 @@ def set_name(box, row):
     mark.set_tooltip_text(tooltip)
 
 
-def set_value(label, row):
-    value = row.value or ""
+def value_kind(value):
     if not value:
-        css_class = "bx-value-empty"
-    elif value.casefold() in ("true", "false"):
-        css_class = "bx-value-boolean"
-    elif VALUE_NUMBER.fullmatch(value):
-        css_class = "bx-value-number"
-    else:
-        css_class = "bx-value-string"
-    label.set_css_classes(["bx-value-cell", css_class])
+        return "empty"
+    if value.casefold() in ("true", "false"):
+        return "boolean"
+    if VALUE_NUMBER.fullmatch(value):
+        return "number"
+    return "string"
+
+
+def set_value(label, row):
+    label.set_css_classes(["bx-value-cell", "bx-value-" + value_kind(row.value)])

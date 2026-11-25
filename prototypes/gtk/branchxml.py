@@ -15,9 +15,11 @@ import appearance
 from chrome import Chrome
 from document import Document, move_neighbor
 from inspector import Inspector
+from source_view import SourcePage
 
 
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
+PAGE_HINTS = ("右键节点可操作", "Ctrl+F 查找　·　F3 下一处　·　Shift+F3 上一处")
 
 
 def is_editable(row):
@@ -139,10 +141,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.pages = Gtk.Notebook()
         self.pages.add_css_class("bx-pages")
         self.pages.append_page(self.overlay, Gtk.Label(label="树视图"))
-        self.source_view = Gtk.TextView(editable=False, monospace=True, left_margin=8, top_margin=6)
-        source_scroll = Gtk.ScrolledWindow()
-        source_scroll.set_child(self.source_view)
-        self.pages.append_page(source_scroll, Gtk.Label(label="XML 源码"))
+        self.source = SourcePage()
+        self.pages.append_page(self.source, Gtk.Label(label="XML 源码"))
         self.pages.connect("switch-page", self.switch_page)
 
         self.inspector = Inspector(self.check_xml)
@@ -165,13 +165,15 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def set_document(self, document):
         self.finish(False)
         self.document = document
+        self.expanded = set()
         self.install_tree()
         self.update_title()
         self.chrome.sync_path()
         self.inspector.report("XML 格式正确", document.path)
+        self.source.clear_search()
         self.refresh_source()
         self.encoding.set_label(document.encoding.upper())
-        self.status.set_label(f"已打开 {document.path.name}　·　右键节点可操作")
+        self.status.set_label(f"已打开 {document.path.name}　·　{PAGE_HINTS[self.pages.get_current_page()]}")
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
         pos = 0
         while pos < min(80, self.rows.get_n_items()):
@@ -179,9 +181,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
             pos += 1
 
     def switch_page(self, notebook, page, index):
-        if index == 1 and hasattr(self, "document"):
+        if not hasattr(self, "document"):
+            return
+        if index == 1:
             self.finish(True)
             self.refresh_source(force=True)
+        self.status.set_label(PAGE_HINTS[index])
 
     def refresh_source(self, force=False):
         if not force and self.pages.get_current_page() != 1:
@@ -193,7 +198,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.inspector.set_visible(True)
             self.inspector.set_current_page(0)
             self.inspector.report(str(error), self.document.path, error)
-        self.source_view.get_buffer().set_text(xml)
+        self.source.set_xml(xml)
+
+    def find_source(self):
+        self.pages.set_current_page(1)
+        self.source.search_entry.grab_focus()
+        self.source.search_entry.select_region(0, -1)
 
     def check_xml(self):
         self.finish(True)
@@ -214,10 +224,40 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def install_tree(self):
         self.rows = Gtk.TreeListModel.new(self.document.roots, False, False,
                                           lambda row: row.children if row.children.get_n_items() else None)
+        self.watched_branches = set()
         self.selection = Gtk.SingleSelection.new(self.rows)
         self.view.set_model(self.selection)
         self.selection.connect("notify::selected-item", lambda *_: self.update_node_actions())
+        self.watch_branches(self.rows, self.document.roots)
         self.update_node_actions()
+
+    def watch_branches(self, parent, children):
+        pending = [(parent, children)]
+        while pending:
+            parent, children = pending.pop()
+            for index, row in enumerate(children):
+                if not row.children.get_n_items():
+                    continue
+                branch = parent.get_child_row(index)
+                if (row.path, row.name) in self.expanded:
+                    branch.set_expanded(True)
+                    pending.append((branch, row.children))
+                # GtkTreeListModel only holds a weak reference to each row wrapper.
+                self.watched_branches.add(branch)
+                branch.connect("notify::expanded", self.expansion_changed)
+
+    def expansion_changed(self, branch, _property):
+        if not branch.is_expandable():
+            # GTK detached this row when an ancestor closed. Keep its remembered state.
+            self.watched_branches.discard(branch)
+            return
+        row = branch.get_item()
+        key = (row.path, row.name)
+        if branch.get_expanded():
+            self.expanded.add(key)
+            self.watch_branches(branch, row.children)
+        else:
+            self.expanded.discard(key)
 
     def update_node_actions(self):
         self.node_menu.popdown()
@@ -297,15 +337,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def show_change(self, row):
         rebuilt = self.rows.get_model() != self.document.roots
         if rebuilt:
-            expanded = {(t.get_item().path, t.get_item().name) for t in self.rows if t.get_expanded()}
             self.install_tree()
-            pos = 0
-            while pos < self.rows.get_n_items():
-                tree_row = self.rows.get_item(pos)
-                item = tree_row.get_item()
-                if (item.path, item.name) in expanded:
-                    tree_row.set_expanded(True)
-                pos += 1
         self.refresh_value(row)
         self.changed()
         target = self.rows.get_child_row(row.path[0])
@@ -555,7 +587,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
             return False
 
         focus = self.get_focus()
-        if focus and focus.get_ancestor(Gtk.Entry) not in (None, self.entry):
+        if focus and (focus.get_ancestor(Gtk.SearchEntry) or
+                      focus.get_ancestor(Gtk.Entry) not in (None, self.entry)):
             return False
         return self.history(redo)
 
