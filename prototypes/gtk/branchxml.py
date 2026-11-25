@@ -101,6 +101,15 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.add_action(action)
             app.set_accels_for_action("win." + name, [shortcut])
             header.pack_start(Gtk.Button(label=title, action_name="win." + name))
+        menu = Gio.Menu()
+        for name, title in (("sibling", "新增同级节点　Insert"), ("child", "新增子元素　Ctrl+Insert"),
+                            ("attribute", "新增属性　Alt+Insert"), ("duplicate", "复制节点　Ctrl+D"),
+                            ("delete", "删除节点　Delete")):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda action, _: self.node_command(action.get_name()))
+            self.add_action(action)
+            menu.append(title, "win." + name)
+        header.pack_end(Gtk.MenuButton(label="节点", menu_model=menu))
         self.set_titlebar(header)
         layout.append(self.overlay)
         layout.append(self.status)
@@ -111,10 +120,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def set_document(self, document):
         self.finish(False)
         self.document = document
-        self.rows = Gtk.TreeListModel.new(document.roots, False, False,
-                                          lambda row: row.children if row.children.get_n_items() else None)
-        self.selection = Gtk.SingleSelection.new(self.rows)
-        self.view.set_model(self.selection)
+        self.install_tree()
         self.update_title()
         self.status.set_label(f"已打开 {document.path.name}　·　点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消")
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
@@ -122,6 +128,85 @@ class RecipeWindow(Gtk.ApplicationWindow):
         while pos < min(80, self.rows.get_n_items()):
             self.rows.get_item(pos).set_expanded(True)
             pos += 1
+
+    def install_tree(self):
+        self.rows = Gtk.TreeListModel.new(self.document.roots, False, False,
+                                          lambda row: row.children if row.children.get_n_items() else None)
+        self.selection = Gtk.SingleSelection.new(self.rows)
+        self.view.set_model(self.selection)
+        self.selection.connect("notify::selected-item", lambda *_: self.update_node_actions())
+        self.update_node_actions()
+
+    def update_node_actions(self):
+        item = self.selection.get_selected_item()
+        row = item.get_item() if item else None
+        for name in ("sibling", "child", "attribute", "duplicate", "delete"):
+            enabled = row is not None
+            if enabled and name in ("child", "attribute"):
+                enabled = row.element
+            elif enabled and len(row.path) == 1:
+                enabled = not row.element and name != "sibling"
+            self.lookup_action(name).set_enabled(enabled)
+
+    def node_command(self, operation):
+        self.finish(True)
+        row = self.selection.get_selected_item().get_item()
+        if operation in ("duplicate", "delete"):
+            self.change_node(row, operation)
+            return
+        attribute = operation == "attribute" or (operation == "sibling" and row.name.startswith("@"))
+        dialog = Gtk.Dialog(title="新增属性" if attribute else "新增元素",
+                            transient_for=self, modal=True)
+        dialog.add_button("取消", Gtk.ResponseType.CANCEL)
+        dialog.add_button("新增", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        entry = Gtk.Entry(text="attribute" if attribute else "element", activates_default=True,
+                          margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        entry.update_property([Gtk.AccessibleProperty.LABEL], ["XML 名称"])
+        dialog.get_content_area().append(entry)
+
+        def answered(dialog, response):
+            name = entry.get_text()
+            dialog.destroy()
+            if response == Gtk.ResponseType.OK:
+                self.change_node(row, operation, name)
+
+        dialog.connect("response", answered)
+        dialog.present()
+        entry.grab_focus()
+        entry.select_region(0, -1)
+
+    def change_node(self, row, operation, name=""):
+        try:
+            selected = self.document.structure(row, operation, name)
+        except FILE_ERRORS as error:
+            self.show_error("节点操作失败", error)
+            return
+        self.show_change(selected)
+        self.status.set_label("已更新节点　·　Ctrl+Z 撤销")
+
+    def show_change(self, row):
+        rebuilt = self.rows.get_model() != self.document.roots
+        if rebuilt:
+            expanded = {(t.get_item().path, t.get_item().name) for t in self.rows if t.get_expanded()}
+            self.install_tree()
+            pos = 0
+            while pos < self.rows.get_n_items():
+                tree_row = self.rows.get_item(pos)
+                item = tree_row.get_item()
+                if (item.path, item.name) in expanded:
+                    tree_row.set_expanded(True)
+                pos += 1
+        self.refresh_value(row)
+        target = self.rows.get_child_row(row.path[0])
+        for index in row.path[1:]:
+            target.set_expanded(True)
+            target = target.get_child_row(index)
+        if rebuilt:
+            target.set_expanded(True)
+        flags = Gtk.ListScrollFlags.SELECT | Gtk.ListScrollFlags.FOCUS
+        self.view.scroll_to(target.get_position(), self.value_column, flags, None)
+        self.view.grab_focus()
 
     def update_title(self):
         marker = "● " if self.document.dirty else ""
@@ -301,7 +386,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.update_title()
         label = self.cells.get(row)
         if label is not None:
-            label.set_text(row.value)
+            label.set_text(row.value or "")
             label.set_tooltip_text(row.value or None)
 
     def finish(self, commit):
@@ -350,12 +435,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         row = self.document.step_history(redo)
         if row is not None:
             self.finish(False)
-            self.refresh_value(row)
-            for pos, tree_row in enumerate(self.rows):
-                if tree_row.get_item() is row:
-                    self.view.scroll_to(pos, self.value_column, Gtk.ListScrollFlags.SELECT, None)
-                    break
-            self.view.grab_focus()
+            self.show_change(row)
             verb = "重做" if redo else "撤销"
             self.status.set_label(f"已{verb} {row.name} 的修改")
         return True
@@ -372,7 +452,19 @@ class RecipeWindow(Gtk.ApplicationWindow):
         return True
 
     def navigation_key(self, controller, key, code, mods):
-        if self.active or mods & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
+        if self.active:
+            return False
+        mods &= Gtk.accelerator_get_default_mod_mask()
+        commands = {
+            (Gdk.KEY_Insert, 0): "sibling", (Gdk.KEY_Insert, Gdk.ModifierType.CONTROL_MASK): "child",
+            (Gdk.KEY_Insert, Gdk.ModifierType.ALT_MASK): "attribute",
+            (Gdk.KEY_d, Gdk.ModifierType.CONTROL_MASK): "duplicate", (Gdk.KEY_Delete, 0): "delete",
+        }
+        command = commands.get((Gdk.keyval_to_lower(key), mods))
+        if command:
+            self.lookup_action(command).activate(None)
+            return True
+        if mods & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
             return False
         pos = self.selection.get_selected()
         if pos == Gtk.INVALID_LIST_POSITION:

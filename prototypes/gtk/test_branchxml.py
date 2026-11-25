@@ -54,6 +54,37 @@ class InputTest(unittest.TestCase):
             self.assertTrue(win.save())
             self.assertEqual(path.read_bytes(), original)
 
+    def test_duplicate_edit_delete_and_restore_selection(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            original = b"<r>\n  <task n='1'><s><![CDATA[A&B]]></s></task>\n</r>"
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(lambda: win.get_mapped())
+            self.assertFalse(win.lookup_action("delete").get_enabled())
+            win.selection.set_selected(1)
+            ctrl = Gdk.ModifierType.CONTROL_MASK
+            win.navigation_key(None, Gdk.KEY_d, 0, ctrl)
+            clone_pos = win.selection.get_selected()
+            clone = win.selection.get_selected_item().get_item()
+            self.assertEqual(clone.path, (0, 1))
+            win.request_edit(clone_pos + 1)
+            self.assertFalse(win.navigation_key(None, Gdk.KEY_Delete, 0, 0))
+            win.entry.set_text("2")
+            win.leave(True)
+            win.selection.set_selected(clone_pos)
+            win.navigation_key(None, Gdk.KEY_Delete, 0, 0)
+            win.history_key(None, Gdk.KEY_z, 0, ctrl)
+            restored = win.selection.get_selected_item().get_item()
+            self.assertEqual((restored.path, restored.children.get_item(0).value), ((0, 1), "2"))
+            win.history_key(None, Gdk.KEY_y, 0, ctrl)
+            self.assertTrue(win.save())
+            win.open_path(path)
+            self.assertEqual(win.document.roots.get_item(0).children.get_n_items(), 1)
+            self.assertEqual(path.read_bytes(), original)
+
     def test_tab_cancel_and_recycled_rows(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "recipe.xml"
