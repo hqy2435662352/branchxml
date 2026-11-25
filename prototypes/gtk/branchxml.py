@@ -110,7 +110,15 @@ class RecipeWindow(Gtk.ApplicationWindow):
             action.connect("activate", lambda action, _: self.node_command(action.get_name()))
             self.add_action(action)
             menu.append(title, "win." + name)
-        header.pack_end(Gtk.MenuButton(label="节点", menu_model=menu))
+        self.node_menu = Gtk.PopoverMenu.new_from_model(menu)
+        self.node_menu.set_has_arrow(False)
+        self.node_menu.set_halign(Gtk.Align.START)
+        self.node_menu.connect_after("closed", lambda *_: self.view.grab_focus())
+        layout.append(self.node_menu)
+        context_click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+        context_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        context_click.connect("pressed", self.context_pressed)
+        self.view.add_controller(context_click)
         self.set_titlebar(header)
         layout.append(self.overlay)
         layout.append(self.status)
@@ -123,7 +131,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.document = document
         self.install_tree()
         self.update_title()
-        self.status.set_label(f"已打开 {document.path.name}　·　点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消")
+        self.status.set_label(f"已打开 {document.path.name}　·　右键节点操作　·　点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消")
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
         pos = 0
         while pos < min(80, self.rows.get_n_items()):
@@ -139,6 +147,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.update_node_actions()
 
     def update_node_actions(self):
+        self.node_menu.popdown()
         item = self.selection.get_selected_item()
         row = item.get_item() if item else None
         for name in ("sibling", "child", "attribute", "duplicate", "delete", "move-up", "move-down"):
@@ -150,6 +159,29 @@ class RecipeWindow(Gtk.ApplicationWindow):
             elif enabled and len(row.path) == 1:
                 enabled = not row.element and name != "sibling"
             self.lookup_action(name).set_enabled(enabled)
+
+    def context_pressed(self, gesture, presses, x, y):
+        # Hit-test the whole row, including its indentation and cell padding.
+        hit = self.view.pick(x, y, Gtk.PickFlags.DEFAULT)
+        while hit is not None and hit is not self.view:
+            if hit.get_accessible_role() == Gtk.AccessibleRole.ROW:
+                for label in self.cells.values():
+                    if label.is_ancestor(hit):
+                        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+                        self.popup_node_menu(label.tree_row, self.view, x, y)
+                        return
+                return
+            hit = hit.get_parent()
+
+    def popup_node_menu(self, tree_row, widget, x, y):
+        x, y = widget.translate_coordinates(self.node_menu.get_parent(), x, y)
+        self.finish(True)
+        self.selection.set_selected(tree_row.get_position())
+        self.view.scroll_to(tree_row.get_position(), None, Gtk.ListScrollFlags.FOCUS, None)
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
+        self.node_menu.set_pointing_to(rect)
+        self.node_menu.popup()
 
     def node_command(self, operation):
         self.finish(True)
@@ -315,8 +347,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def bind_value(self, factory, item):
         label = item.get_child()
-        row = item.get_item().get_item()
-        label.row = row
+        label.tree_row = item.get_item()
+        row = label.row = label.tree_row.get_item()
         label.set_text(row.value or "")
         label.set_tooltip_text(row.value or None)
         self.cells[row] = label
@@ -324,7 +356,9 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.overlay.queue_allocate()
 
     def unbind_value(self, factory, item):
-        self.cells.pop(item.get_child().row, None)
+        label = item.get_child()
+        self.cells.pop(label.row, None)
+        label.row = label.tree_row = None
 
     def preedit_changed(self, widget, text):
         self.preedit = text
@@ -458,6 +492,13 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if self.active:
             return False
         mods &= Gtk.accelerator_get_default_mod_mask()
+        if ((key == Gdk.KEY_Menu and not mods) or
+                (key == Gdk.KEY_F10 and mods == Gdk.ModifierType.SHIFT_MASK)):
+            target = self.selection.get_selected_item()
+            label = self.cells.get(target.get_item()) if target else None
+            if label is not None and label.get_mapped():
+                self.popup_node_menu(target, label, 0, label.get_height() / 2)
+            return True
         commands = {
             (Gdk.KEY_Insert, 0): "sibling", (Gdk.KEY_Insert, Gdk.ModifierType.CONTROL_MASK): "child",
             (Gdk.KEY_Insert, Gdk.ModifierType.ALT_MASK): "attribute",

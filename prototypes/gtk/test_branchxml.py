@@ -85,6 +85,29 @@ class InputTest(unittest.TestCase):
             self.assertEqual(win.document.roots.get_item(0).children.get_n_items(), 1)
             self.assertEqual(path.read_bytes(), original)
 
+    def test_context_menu_targets_clicked_row(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            original = b"<r><task n='1'/><task n='2'/></r>"
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            target = win.document.roots.get_item(0).children.get_item(1)
+            wait_for(lambda: target in win.cells and win.cells[target].get_height() > 0)
+            win.selection.set_selected(1)
+            label = win.cells[target]
+            _, y = label.translate_coordinates(win.view, 0, label.get_height() / 2)
+            gesture = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+            win.context_pressed(gesture, 1, 10, y)
+            self.assertTrue(win.node_menu.get_visible())
+            self.assertIs(win.selection.get_selected_item().get_item(), target)
+            self.assertTrue(win.lookup_action("move-up").get_enabled())
+            self.assertFalse(win.lookup_action("move-down").get_enabled())
+            win.lookup_action("move-up").activate(None)
+            self.assertEqual(win.document.render(), b"<r><task n='2'/><task n='1'/></r>")
+            self.assertEqual(path.read_bytes(), original)
+
     def test_tab_cancel_and_recycled_rows(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "recipe.xml"
