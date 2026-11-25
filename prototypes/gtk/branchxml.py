@@ -12,14 +12,22 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 import appearance
+import i18n
 from chrome import Chrome
-from document import Document, move_neighbor
+from document import Document, error_text, move_neighbor
+from i18n import tr
 from inspector import Inspector
 from source_view import SourcePage
 
 
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
-PAGE_HINTS = ("右键节点可操作", "Ctrl+F 查找　·　F3 下一处　·　Shift+F3 上一处")
+PAGE_HINTS = ("Right-click a node for actions", "Ctrl+F Find  ·  F3 Next  ·  Shift+F3 Previous")
+NODE_COMMANDS = (
+    ("sibling", "Add Sibling", "Insert"), ("child", "Add Child Element", "Ctrl+Insert"),
+    ("attribute", "Add Attribute", "Alt+Insert"), ("duplicate", "Duplicate Node", "Ctrl+D"),
+    ("move-up", "Move Up", "Alt+↑"), ("move-down", "Move Down", "Alt+↓"),
+    ("delete", "Delete Node", "Delete"),
+)
 
 
 def is_editable(row):
@@ -48,6 +56,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         titlebar.pack_start(caption)
         self.set_titlebar(titlebar)
         self.cells = {}
+        self.name_cells = {}
         self.padded_row = None
         self.anchor_handler = None
         self.active = None
@@ -63,17 +72,17 @@ class RecipeWindow(Gtk.ApplicationWindow):
         names = Gtk.SignalListItemFactory()
         names.connect("setup", self.setup_name)
         names.connect("bind", self.bind_name)
-        names.connect("unbind", lambda _, item: item.get_child().set_list_row(None))
-        name_column = Gtk.ColumnViewColumn.new("节点", names)
-        name_column.set_fixed_width(270)
-        name_column.set_resizable(True)
-        self.view.append_column(name_column)
+        names.connect("unbind", self.unbind_name)
+        self.name_column = Gtk.ColumnViewColumn.new("", names)
+        self.name_column.set_fixed_width(270)
+        self.name_column.set_resizable(True)
+        self.view.append_column(self.name_column)
 
         values = Gtk.SignalListItemFactory()
         values.connect("setup", self.setup_value)
         values.connect("bind", self.bind_value)
         values.connect("unbind", self.unbind_value)
-        self.value_column = Gtk.ColumnViewColumn.new("值", values)
+        self.value_column = Gtk.ColumnViewColumn.new("", values)
         self.value_column.set_expand(True)
         self.view.append_column(self.value_column)
 
@@ -124,16 +133,15 @@ class RecipeWindow(Gtk.ApplicationWindow):
             action.connect("activate", lambda *_, run=callback: run())
             self.add_action(action)
             app.set_accels_for_action("win." + name, [shortcut])
-        menu = Gio.Menu()
-        for name, title in (("sibling", "新增同级节点　Insert"), ("child", "新增子元素　Ctrl+Insert"),
-                            ("attribute", "新增属性　Alt+Insert"), ("duplicate", "复制节点　Ctrl+D"),
-                            ("move-up", "上移节点　Alt+↑"), ("move-down", "下移节点　Alt+↓"),
-                            ("delete", "删除节点　Delete")):
+        language = Gio.SimpleAction.new_stateful("language", GLib.VariantType.new("s"),
+                                                 GLib.Variant("s", i18n.preference))
+        language.connect("change-state", self.change_language)
+        self.add_action(language)
+        for name, _title, _shortcut in NODE_COMMANDS:
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda action, _: self.node_command(action.get_name()))
             self.add_action(action)
-            menu.append(title, "win." + name)
-        self.node_menu = Gtk.PopoverMenu.new_from_model(menu)
+        self.node_menu = Gtk.PopoverMenu.new_from_model(Gio.Menu())
         self.node_menu.set_has_arrow(False)
         self.node_menu.set_halign(Gtk.Align.START)
         self.node_menu.connect_after("closed", lambda *_: self.view.grab_focus())
@@ -144,9 +152,9 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.view.add_controller(context_click)
         self.pages = Gtk.Notebook()
         self.pages.add_css_class("bx-pages")
-        self.pages.append_page(self.overlay, Gtk.Label(label="树视图"))
+        self.pages.append_page(self.overlay, Gtk.Label())
         self.source = SourcePage()
-        self.pages.append_page(self.source, Gtk.Label(label="XML 源码"))
+        self.pages.append_page(self.source, Gtk.Label())
         self.pages.connect("switch-page", self.switch_page)
 
         self.inspector = Inspector(self.check_xml)
@@ -163,8 +171,50 @@ class RecipeWindow(Gtk.ApplicationWindow):
         layout.append(statusbar)
         self.set_child(layout)
         self.set_document(document)
+        self.translate_ui()
         self.view.grab_focus()
         self.connect("close-request", self.close_requested)
+
+    def change_language(self, action, value):
+        choice = value.get_string()
+        if choice == i18n.preference or choice not in i18n.CHOICES:
+            return
+        try:
+            i18n.select_language(choice)
+        except (OSError, GLib.Error) as error:
+            self.show_error("Could not save the language preference", error)
+            return
+        for window in self.get_application().get_windows():
+            if isinstance(window, RecipeWindow):
+                window.lookup_action("language").set_state(value)
+                window.translate_ui()
+
+    def translate_ui(self):
+        self.name_column.set_title(tr("Node"))
+        self.value_column.set_title(tr("Value"))
+        self.pages.set_tab_label_text(self.overlay, tr("Tree View"))
+        self.pages.set_tab_label_text(self.source, tr("XML Source"))
+        self.chrome.translate_ui()
+        self.source.translate_ui()
+        self.inspector.translate_ui()
+        self.inspector.select_node(self.selection.get_selected_item())
+        menu = Gio.Menu()
+        for name, title, shortcut in NODE_COMMANDS:
+            menu.append(f"{tr(title)}    {shortcut}", "win." + name)
+        self.node_menu.set_menu_model(menu)
+        for cell, row in self.name_cells.items():
+            appearance.set_name(cell, row)
+        if self.active is not None:
+            self.label_editor(self.active)
+        message, hint, values = self.status_content
+        self.set_status(message, hint, **values)
+
+    def set_status(self, message, hint=None, **values):
+        self.status_content = message, hint, values
+        text = tr(message, **values)
+        if hint:
+            text += "  ·  " + tr(hint)
+        self.status.set_label(text)
 
     def set_document(self, document):
         self.finish(False)
@@ -173,11 +223,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.install_tree()
         self.update_title()
         self.chrome.sync_path()
-        self.inspector.report("XML 格式正确", document.path)
+        self.inspector.report("XML is well-formed", document.path)
         self.source.clear_search()
         self.refresh_source()
         self.encoding.set_label(document.encoding.upper())
-        self.status.set_label(f"已打开 {document.path.name}　·　{PAGE_HINTS[self.pages.get_current_page()]}")
+        self.set_status("Opened {filename}", PAGE_HINTS[self.pages.get_current_page()], filename=document.path.name)
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
         pos = 0
         while pos < min(80, self.rows.get_n_items()):
@@ -191,7 +241,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if index == 1:
             self.finish(True)
             self.refresh_source(force=True)
-        self.status.set_label(PAGE_HINTS[index])
+        self.set_status(PAGE_HINTS[index])
 
     def refresh_source(self, force=False):
         if not force and self.pages.get_current_page() != 1:
@@ -202,7 +252,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
             xml = ""
             self.inspector.set_visible(True)
             self.inspector.set_current_page(0)
-            self.inspector.report(str(error), self.document.path, error)
+            self.inspector.report(error, self.document.path)
         self.source.set_xml(xml)
 
     def find_source(self):
@@ -217,12 +267,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             self.document.render()
         except FILE_ERRORS as error:
-            self.inspector.report(str(error), self.document.path, error)
+            self.inspector.report(error, self.document.path)
         else:
-            self.inspector.report("XML 格式正确", self.document.path)
+            self.inspector.report("XML is well-formed", self.document.path)
 
     def changed(self):
-        self.inspector.report("修改后尚未检查", self.document.path)
+        self.inspector.report("Changes have not been checked", self.document.path)
         self.inspector.select_node(self.selection.get_selected_item())
         self.refresh_source()
 
@@ -386,14 +436,14 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.change_node(row, operation)
             return
         attribute = operation == "attribute" or (operation == "sibling" and row.name.startswith("@"))
-        dialog = Gtk.Dialog(title="新增属性" if attribute else "新增元素",
+        dialog = Gtk.Dialog(title=tr("Add Attribute" if attribute else "Add Element"),
                             transient_for=self, modal=True)
-        dialog.add_button("取消", Gtk.ResponseType.CANCEL)
-        dialog.add_button("新增", Gtk.ResponseType.OK)
+        dialog.add_button(tr("Cancel"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(tr("Add"), Gtk.ResponseType.OK)
         dialog.set_default_response(Gtk.ResponseType.OK)
         entry = Gtk.Entry(text="attribute" if attribute else "element", activates_default=True,
                           margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
-        entry.update_property([Gtk.AccessibleProperty.LABEL], ["XML 名称"])
+        entry.update_property([Gtk.AccessibleProperty.LABEL], [tr("XML name")])
         dialog.get_content_area().append(entry)
 
         def answered(dialog, response):
@@ -411,10 +461,10 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             selected = self.document.structure(row, operation, name)
         except FILE_ERRORS as error:
-            self.show_error("节点操作失败", error)
+            self.show_error("Could not update the node", error)
             return
         self.show_change(selected)
-        self.status.set_label("已更新节点　·　Ctrl+Z 撤销")
+        self.set_status("Node updated  ·  Ctrl+Z to undo")
 
     def show_change(self, row):
         rebuilt = self.rows.get_model() != self.document.roots
@@ -442,15 +492,15 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.set_title(f"{marker}{self.document.path.name} — BranchXML · GTK")
 
     def show_error(self, message, error):
-        Gtk.AlertDialog(message=message, detail=str(error)).show(self)
+        Gtk.AlertDialog(message=tr(message), detail=error_text(error), buttons=[tr("Close")]).show(self)
 
     def confirm_changes(self, proceed):
         self.finish(True)
         if not self.document.dirty:
             proceed()
             return
-        dialog = Gtk.AlertDialog(message=f"保存对 {self.document.path.name} 的修改？",
-                                 buttons=["取消", "放弃修改", "保存"],
+        dialog = Gtk.AlertDialog(message=tr("Save changes to {filename}?", filename=self.document.path.name),
+                                 buttons=[tr("Cancel"), tr("Discard Changes"), tr("Save")],
                                  cancel_button=0, default_button=2)
 
         def answered(dialog, result):
@@ -473,10 +523,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def choose_file(self, save_as):
         self.finish(True)
         path = self.document.path
-        dialog = Gtk.FileDialog(title="另存为" if save_as else "打开 XML", modal=True)
+        dialog = Gtk.FileDialog(title=tr("Save As" if save_as else "Open XML"), modal=True,
+                                accept_label=tr("Save" if save_as else "Open"))
         dialog.set_initial_folder(Gio.File.new_for_path(str(path.absolute().parent)))
         if save_as:
-            dialog.set_initial_name(path.stem + "-副本" + path.suffix)
+            dialog.set_initial_name(tr("{stem}-copy{suffix}", stem=path.stem, suffix=path.suffix))
             dialog.save(self, None, self.file_chosen, True)
         else:
             dialog.open(self, None, self.file_chosen, False)
@@ -486,14 +537,14 @@ class RecipeWindow(Gtk.ApplicationWindow):
             file = dialog.save_finish(result) if save_as else dialog.open_finish(result)
             path = file.get_path()
             if path is None:
-                raise ValueError("请选择本机文件")
+                raise ValueError(tr("Choose a local file."))
         except GLib.Error as error:
             if not any(error.matches(Gtk.DialogError.quark(), code)
                        for code in (Gtk.DialogError.DISMISSED, Gtk.DialogError.CANCELLED)):
-                self.show_error("文件对话框出错", error)
+                self.show_error("File dialog error", error)
             return
         except ValueError as error:
-            self.show_error("无法选择文件", error)
+            self.show_error("Could not select the file", error)
             return
         if save_as:
             self.save(path)
@@ -504,10 +555,10 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             doc = Document(path)
         except FILE_ERRORS as error:
-            self.inspector.report(str(error), Path(path), error)
+            self.inspector.report(error, Path(path))
             self.inspector.set_visible(True)
             self.inspector.set_current_page(0)
-            self.show_error("打开失败", error)
+            self.show_error("Could not open the file", error)
             return
         self.set_document(doc)
 
@@ -516,13 +567,13 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             self.document.save(path or self.document.path)
         except FILE_ERRORS as error:
-            self.inspector.report(str(error), self.document.path, error)
-            self.show_error("保存失败", error)
+            self.inspector.report(error, self.document.path)
+            self.show_error("Could not save the file", error)
             return False
         self.update_title()
         self.chrome.sync_path()
-        self.inspector.report("XML 格式正确", self.document.path)
-        self.status.set_label(f"已保存到 {self.document.path}")
+        self.inspector.report("XML is well-formed", self.document.path)
+        self.set_status("Saved to {path}", path=self.document.path)
         return True
 
     def setup_name(self, factory, item):
@@ -534,7 +585,14 @@ class RecipeWindow(Gtk.ApplicationWindow):
         tree_row = item.get_item()
         expander = item.get_child()
         expander.set_list_row(tree_row)
-        appearance.set_name(expander.get_child(), tree_row.get_item())
+        cell, row = expander.get_child(), tree_row.get_item()
+        self.name_cells[cell] = row
+        appearance.set_name(cell, row)
+
+    def unbind_name(self, factory, item):
+        expander = item.get_child()
+        self.name_cells.pop(expander.get_child(), None)
+        expander.set_list_row(None)
 
     def setup_value(self, factory, item):
         label = cell_label()
@@ -611,12 +669,15 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.entry.set_enable_undo(False)
         self.entry.set_text(row.value)
         self.entry.set_enable_undo(True)
-        self.entry.update_property([Gtk.AccessibleProperty.LABEL], [f"编辑 {row.name} 的值"])
+        self.label_editor(row)
         self.overlay.queue_allocate()
         self.field.set_visible(True)
         self.entry.grab_focus()
         self.entry.select_region(0, -1)
-        self.status.set_label(f"编辑 {row.name}　·　Enter 提交　·　Tab 提交并继续　·　Esc 取消")
+        self.set_status("Editing {name}  ·  Enter to commit  ·  Tab to continue  ·  Esc to cancel", name=row.name)
+
+    def label_editor(self, row):
+        self.entry.update_property([Gtk.AccessibleProperty.LABEL], [tr("Edit the value of {name}", name=row.name)])
 
     def commit_value(self):
         value = self.entry.get_text()
@@ -644,7 +705,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.preedit = ""
         self.field.set_visible(False)
         self.update_history_actions()
-        self.status.set_label(("已提交" if commit else "已取消") + f" {name} 的编辑")
+        self.set_status("Committed edit to {name}" if commit else "Canceled edit to {name}", name=name)
 
     def leave(self, commit):
         if self.active and not self.preedit:
@@ -659,7 +720,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
                 return
         if self.active:
             self.leave(True)
-        self.status.set_label("已到最后一个可见值" if direction > 0 else "已到第一个可见值")
+        self.set_status("Reached the last visible value" if direction > 0 else "Reached the first visible value")
 
     def history_key(self, controller, key, code, mods):
         mods &= Gtk.accelerator_get_default_mod_mask()
@@ -688,8 +749,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if row is not None:
             self.finish(False)
             self.show_change(row)
-            verb = "重做" if redo else "撤销"
-            self.status.set_label(f"已{verb} {row.name} 的修改")
+            self.set_status("Redid change to {name}" if redo else "Undid change to {name}", name=row.name)
         return True
 
     def edit_key(self, controller, key, code, mods):
@@ -743,16 +803,16 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=tr("BranchXML GTK 4 XML editor."))
     parser.add_argument("xml", nargs="?", type=Path,
-                        default=Path(__file__).resolve().parents[2] / "examples/demo.xml")
+                        default=Path(__file__).resolve().parents[2] / "examples/demo.xml", help=tr("XML file to open"))
     path = parser.parse_args().xml
     if Gtk.check_version(4, 12, 0):
-        parser.exit(1, "此原型需要 GTK 4.12 或更高版本。\n")
+        parser.exit(1, tr("BranchXML requires GTK 4.12 or later.") + "\n")
     try:
         document = Document(path)
     except FILE_ERRORS as error:
-        parser.exit(1, f"{path}: {error}\n")
+        parser.exit(1, f"{path}: {error_text(error)}\n")
     app = Gtk.Application(application_id="io.github.branchxml.InputPrototype",
                           flags=Gio.ApplicationFlags.NON_UNIQUE)
     app.connect("activate", lambda app: RecipeWindow(app, document).present())

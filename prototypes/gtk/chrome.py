@@ -4,6 +4,8 @@ from pathlib import Path
 
 from gi.repository import Gio, Gtk
 
+from i18n import CHOICES, tr
+
 
 class Chrome(Gtk.Box):
     def __init__(self, window, app):
@@ -23,38 +25,53 @@ class Chrome(Gtk.Box):
         app.set_accels_for_action("win.address", ["<Control>l"])
         app.set_accels_for_action("win.find-source", ["<Control>f"])
 
-        bar = Gio.Menu()
-        for title, commands in (
-                ("文件", (("打开…", "open"), ("保存", "save"), ("另存为…", "save-as"))),
-                ("编辑", (("撤销", "undo"), ("重做", "redo"), ("查找 XML 源码…", "find-source"))),
-                ("视图", (("树视图", "tree"), ("XML 源码", "source"), ("定位到文件路径", "address"),
-                        ("显示或隐藏检查面板", "inspector"), ("检查 XML", "check")))):
-            menu = Gio.Menu()
-            for label, name in commands:
-                menu.append(label, "win." + name)
-            bar.append_submenu(title, menu)
-        self.append(Gtk.PopoverMenuBar.new_from_model(bar))
+        self.menu_bar = Gtk.PopoverMenuBar.new_from_model(Gio.Menu())
+        self.append(self.menu_bar)
 
         tools = Gtk.Box(spacing=2, margin_start=5, margin_end=5, margin_top=2, margin_bottom=2)
+        self.buttons = {}
         for icon, tooltip, action in (
-                ("document-open", "打开（Ctrl+O）", "open"),
-                ("document-save", "保存（Ctrl+S）", "save"),
-                ("document-save-as", "另存为（Ctrl+Shift+S）", "save-as"),
-                ("edit-undo-symbolic", "撤销（Ctrl+Z）", "undo"),
-                ("edit-redo-symbolic", "重做（Ctrl+Shift+Z）", "redo")):
+                ("document-open", "Open (Ctrl+O)", "open"),
+                ("document-save", "Save (Ctrl+S)", "save"),
+                ("document-save-as", "Save As (Ctrl+Shift+S)", "save-as"),
+                ("edit-undo-symbolic", "Undo (Ctrl+Z)", "undo"),
+                ("edit-redo-symbolic", "Redo (Ctrl+Shift+Z)", "redo")):
             if action == "undo":
                 tools.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
-            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, action_name="win." + action)
+            button = Gtk.Button(icon_name=icon, action_name="win." + action)
             button.set_focus_on_click(False)
-            button.update_property([Gtk.AccessibleProperty.LABEL], [tooltip])
+            self.buttons[tooltip] = button
             button.add_css_class("flat")
             tools.append(button)
-        self.address = Gtk.Entry(hexpand=True, tooltip_text="文件路径（Ctrl+L），按 Enter 打开")
+        self.address = Gtk.Entry(hexpand=True)
         self.address.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, "text-x-generic-symbolic")
-        self.address.update_property([Gtk.AccessibleProperty.LABEL], ["文件路径"])
         self.address.connect("activate", self.open_address)
         tools.append(self.address)
         self.append(tools)
+
+    def translate_ui(self):
+        bar = Gio.Menu()
+        for title, commands in (
+                ("File", (("Open…", "open"), ("Save", "save"), ("Save As…", "save-as"))),
+                ("Edit", (("Undo", "undo"), ("Redo", "redo"), ("Find in XML Source…", "find-source"))),
+                ("View", (("Tree View", "tree"), ("XML Source", "source"), ("Go to File Path", "address"),
+                          ("Show or Hide Inspector", "inspector"), ("Check XML", "check")))):
+            menu = Gio.Menu()
+            for label, name in commands:
+                menu.append(tr(label), "win." + name)
+            if title == "View":
+                languages = Gio.Menu()
+                for choice, label in CHOICES.items():
+                    languages.append(tr(label) if choice == "system" else label, "win.language::" + choice)
+                menu.append_submenu(tr("Language"), languages)
+            bar.append_submenu(tr(title), menu)
+        self.menu_bar.set_menu_model(bar)
+        for tooltip, button in self.buttons.items():
+            text = tr(tooltip)
+            button.set_tooltip_text(text)
+            button.update_property([Gtk.AccessibleProperty.LABEL], [text])
+        self.address.set_tooltip_text(tr("File path (Ctrl+L), press Enter to open"))
+        self.address.update_property([Gtk.AccessibleProperty.LABEL], [tr("File path")])
 
     def sync_path(self):
         self.address.set_text(str(self.window.document.path.absolute()))
@@ -67,7 +84,7 @@ class Chrome(Gtk.Box):
         try:
             path = Path(entry.get_text()).expanduser()
         except RuntimeError as error:
-            self.window.show_error("打开失败", error)
+            self.window.show_error("Could not open the file", error)
             return
         if not path.is_absolute():
             path = self.window.document.path.absolute().parent / path

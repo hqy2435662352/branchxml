@@ -8,6 +8,24 @@ from xml.sax.saxutils import escape
 
 from gi.repository import Gio, GObject
 
+from i18n import tr
+
+
+class DocumentError(ValueError):
+    def __init__(self, message, **values):
+        super().__init__(message)
+        self.values = values
+
+    def __str__(self):
+        return tr(self.args[0], **self.values)
+
+
+def error_text(error):
+    if isinstance(error, expat.ExpatError):
+        return tr("{reason} (line {line}, column {column})", reason=tr(expat.ErrorString(error.code)),
+                  line=error.lineno, column=error.offset + 1)
+    return str(error)
+
 
 class XmlRow(GObject.Object):
     def __init__(self, name, value=None, span=None):
@@ -29,7 +47,7 @@ def validate(data):
         encoding = declared or encoding
 
     def reject_dtd(*args):
-        raise ValueError("不支持含 DTD 的 XML")
+        raise DocumentError("XML documents with a DTD are not supported.")
 
     parser = expat.ParserCreate(namespace_separator=" ")
     parser.XmlDeclHandler = declaration
@@ -85,7 +103,7 @@ def parse_rows(source):
         for key, value in zip(attrs[::2], attrs[1::2]):
             match = ATTRIBUTE.match(source, pos)
             if match is None:
-                raise ValueError(f"无法定位 {name} 的属性 {key}")
+                raise DocumentError("Could not locate attribute {attribute} on {element}.", attribute=key, element=name)
             first, last = match.span(2)
             attr = XmlRow("@" + key, value, (first, last, match[1].decode()))
             attr.bounds = (match.end() - len(match[0].lstrip()), match.end())
@@ -173,9 +191,9 @@ def replacement(row):
     if kind == "cdata":
         return value.replace("]]>", "]]]]><![CDATA[>")
     if kind == "comment" and ("--" in value or value.endswith("-")):
-        raise ValueError("XML 注释不能含有 -- 或以 - 结尾")
+        raise DocumentError("An XML comment cannot contain -- or end with -.")
     if kind.startswith("pi") and "?>" in value:
-        raise ValueError("XML 处理指令不能含有 ?>")
+        raise DocumentError("An XML processing instruction cannot contain ?>.")
     return (" " if kind == "pi-space" else "") + value
 
 
@@ -240,7 +258,7 @@ def node_splice(xml, roots, row, operation, name):
     if operation in ("move-up", "move-down"):
         neighbor = move_neighbor(roots, row, operation)
         if neighbor is None:
-            raise ValueError("该方向没有可交换的同级节点。")
+            raise DocumentError("There is no sibling to move past in this direction.")
         left, right = (neighbor, row) if operation == "move-up" else (row, neighbor)
         first, first_end = left.bounds
         second, last = right.bounds
@@ -253,12 +271,12 @@ def node_splice(xml, roots, row, operation, name):
     parent = row_at(roots, row.path[:-1]) if len(row.path) > 1 else None
     attr = row.name.startswith("@")
     if operation in ("duplicate", "sibling", "delete") and row.element and parent is None:
-        raise ValueError("文档必须保留一个根元素。请选择子节点，或给根元素添加子元素。")
+        raise DocumentError("The document must keep one root element. Select a child or add a child to the root.")
     if operation in ("child", "attribute") and not row.element:
-        raise ValueError("请先选择要添加内容的元素。")
+        raise DocumentError("Select the element to add content to.")
     if operation in ("sibling", "child", "attribute"):
         if not re.fullmatch(r"""[^\s<>&/'"=?!]+""", name):
-            raise ValueError("请输入有效的 XML 名称。")
+            raise DocumentError("Enter a valid XML name.")
         tag = name.encode()
 
     if attr and operation in ("sibling", "duplicate", "delete"):
@@ -307,7 +325,7 @@ def node_splice(xml, roots, row, operation, name):
         padding = line_indent(xml, row, parent, roots)
         fragment = xml[start:end] if operation == "duplicate" else b"<" + tag + b"/>"
         return end, end, padding + fragment, end + len(padding)
-    raise ValueError("未知的节点操作")
+    raise DocumentError("Unknown node operation.")
 
 
 class Document:
@@ -317,7 +335,7 @@ class Document:
         self.encoding = validate(self.disk_bytes)
         decoded = self.disk_bytes.decode(self.encoding)
         if decoded.encode(self.encoding) != self.disk_bytes:
-            raise ValueError("此文件的编码无法逐字节往返转换")
+            raise DocumentError("This file cannot be read and written byte for byte in its original encoding.")
         self.source = decoded.encode("utf-8")
         self.roots = parse_rows(self.source)
         self.modified = set()
@@ -379,7 +397,7 @@ class Document:
             roots = parse_rows(xml)
             current = row_at_offset(roots, offset)
             if current is None or current.bounds[0] != offset or current.name != row.name:
-                raise ValueError("当前值已合并或移除，请先选择其父元素。")
+                raise DocumentError("This value has been merged or removed. Select its parent element.")
             row = current
         start, end, fragment, offset = node_splice(xml, roots, row, operation, name)
         updated = xml[:start] + fragment + xml[end:]
@@ -417,7 +435,7 @@ class Document:
         if same:
             _, current, etag = target.load_contents(None)
             if current != self.disk_bytes:
-                raise ValueError("磁盘文件已被修改。请另存为新文件以保留两份内容。")
+                raise DocumentError("The file on disk has changed. Use Save As to keep both versions.")
         data = self.render() if self.dirty else self.disk_bytes
         if not same or data != self.disk_bytes:
             target.replace_contents(data, etag, False, Gio.FileCreateFlags.NONE, None)

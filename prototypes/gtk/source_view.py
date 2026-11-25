@@ -8,6 +8,7 @@ from pygments.lexers.html import XmlLexer
 from pygments.token import Comment, Name, String, Text
 
 from appearance import value_kind
+from i18n import tr
 
 
 class SourceXmlLexer(XmlLexer):
@@ -65,8 +66,7 @@ class SourcePage(Gtk.Box):
 
         bar = Gtk.Box(spacing=4)
         bar.add_css_class("bx-find")
-        self.search_entry = Gtk.SearchEntry(placeholder_text="查找 XML 源码（Ctrl+F）", hexpand=True)
-        self.search_entry.update_property([Gtk.AccessibleProperty.LABEL], ["查找 XML 源码"])
+        self.search_entry = Gtk.SearchEntry(hexpand=True)
         self.search_entry.connect("changed", lambda *_: self.find_matches())
         self.search_entry.connect("activate", lambda *_: self.move_match(1))
         self.search_entry.connect("next-match", lambda *_: self.move_match(1))
@@ -76,10 +76,8 @@ class SourcePage(Gtk.Box):
         self.count = Gtk.Label()
         bar.append(self.count)
         self.buttons = []
-        for icon, label, step in (("go-up-symbolic", "上一个匹配（Shift+F3）", -1),
-                                  ("go-down-symbolic", "下一个匹配（F3）", 1)):
-            button = Gtk.Button(icon_name=icon, tooltip_text=label, sensitive=False, focus_on_click=False)
-            button.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        for icon, step in (("go-up-symbolic", -1), ("go-down-symbolic", 1)):
+            button = Gtk.Button(icon_name=icon, sensitive=False, focus_on_click=False)
             button.connect("clicked", lambda _, step=step: self.move_match(step))
             self.buttons.append(button)
             bar.append(button)
@@ -90,6 +88,15 @@ class SourcePage(Gtk.Box):
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.search_key)
         self.add_controller(keys)
+
+    def translate_ui(self):
+        self.search_entry.set_placeholder_text(tr("Find in XML source (Ctrl+F)"))
+        self.search_entry.update_property([Gtk.AccessibleProperty.LABEL], [tr("Find in XML source")])
+        for button, text in zip(self.buttons, ("Previous match (Shift+F3)", "Next match (F3)")):
+            button.set_tooltip_text(tr(text))
+            button.update_property([Gtk.AccessibleProperty.LABEL], [tr(text)])
+        if self.search_entry.get_text() and not self.matches:
+            self.count.set_text(tr("No matches"))
 
     def set_xml(self, xml):
         if xml == self.xml:
@@ -133,7 +140,7 @@ class SourcePage(Gtk.Box):
         if self.matches:
             self.move_match(1)
         else:
-            self.count.set_text("无匹配" if query else "")
+            self.count.set_text(tr("No matches") if query else "")
 
     def move_match(self, step):
         if not self.matches:

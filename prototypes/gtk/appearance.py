@@ -6,6 +6,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Pango
 
+from i18n import tr
+
 
 CSS = """
 .branchxml {
@@ -237,7 +239,6 @@ def name_cell():
     box.add_css_class("bx-name-cell")
     mark = Gtk.Label(label="●")
     folder = Gtk.Image.new_from_icon_name("folder-symbolic")
-    folder.set_tooltip_text("含子节点的元素")
     folder.add_css_class("bx-icon-folder")
     label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
     box.append(mark)
@@ -252,19 +253,20 @@ def set_name(box, row):
     label = box.get_last_child()
     label.set_text(row.name)
     container = row.element and row.children.get_n_items() > 0
+    folder.set_tooltip_text(tr("Element with child nodes"))
     folder.set_visible(container)
     mark.set_visible(not container)
     if row.element:
         kind = "element"
-        tooltip = "元素值来自 CDATA 文本" if row.span and row.span[2] == "cdata" else "XML 元素"
+        tooltip = "Element value from CDATA" if row.span and row.span[2] == "cdata" else "XML element"
     elif row.name.startswith("@"):
-        kind, tooltip = "attribute", "XML 属性"
+        kind, tooltip = "attribute", "XML attribute"
     else:
         kind = "special"
-        tooltip = "XML 处理指令" if row.span[2].startswith("pi") else "XML 注释或文本节点"
+        tooltip = "XML processing instruction" if row.span[2].startswith("pi") else "XML comment or text node"
     label.set_css_classes(["bx-name-" + kind])
     mark.set_css_classes(["bx-row-mark", "bx-mark-" + kind])
-    mark.set_tooltip_text(tooltip)
+    mark.set_tooltip_text(tr(tooltip))
 
 
 def value_kind(value):

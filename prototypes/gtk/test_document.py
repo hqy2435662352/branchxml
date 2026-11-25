@@ -6,6 +6,7 @@ import unittest
 from xml.parsers.expat import ExpatError
 
 from document import Document, row_at
+from i18n import tr
 
 
 class SaveTest(unittest.TestCase):
@@ -84,8 +85,9 @@ class SaveTest(unittest.TestCase):
         self.assertTrue(doc.dirty)
         doc.edit(row, "mine")
         self.path.write_bytes(b"<r>theirs</r>")
-        with self.assertRaisesRegex(ValueError, "磁盘文件"):
+        with self.assertRaises(ValueError) as conflict:
             doc.save(self.path)
+        self.assertEqual(str(conflict.exception), tr("The file on disk has changed. Use Save As to keep both versions."))
         self.assertTrue(doc.dirty)
         doc.save(self.copy)
         self.assertEqual(self.copy.read_bytes(), b"<r>mine</r>")

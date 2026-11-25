@@ -6,6 +6,8 @@ import time
 import unittest
 
 from branchxml import Gdk, GLib, Gio, Gtk, RecipeWindow, Document
+import i18n
+from i18n import tr
 
 
 def wait_for(condition):
@@ -25,6 +27,70 @@ class InputTest(unittest.TestCase):
     def setUpClass(cls):
         cls.app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
         cls.app.register(None)
+
+    def test_language_menu_preserves_edits_tree_state_and_search(self):
+        with (TemporaryDirectory() as temp,
+              patch.object(i18n, "preference_file", return_value=Path(temp) / "config" / "language"),
+              patch.object(i18n, "preference", i18n.preference),
+              patch.object(i18n, "_catalog", i18n._catalog)):
+            i18n.select_language("en")
+            path = Path(temp) / "recipe.xml"
+            original = "<r name='File'><task>Save</task><group><子项/></group></r>".encode()
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            group = win.rows.get_item(3)
+            group.set_expanded(False)
+            win.request_edit(1)
+            win.entry.set_text("茶 & water")
+            win.activate_action("win.language", GLib.Variant("s", "zh_CN"))
+            self.assertEqual((win.name_column.get_title(), win.value_column.get_title()), ("节点", "值"))
+            self.assertEqual(win.pages.get_tab_label_text(win.source), "XML 源码")
+            self.assertEqual(win.inspector.result[0].get_text(), "XML 格式正确")
+            self.assertEqual(win.lookup_action("language").get_state().get_string(), "zh_CN")
+            view = win.chrome.menu_bar.get_menu_model().get_item_link(2, Gio.MENU_LINK_SUBMENU)
+            last = view.get_n_items() - 1
+            self.assertEqual(view.get_item_attribute_value(last, "label", None).get_string(), "语言")
+            languages = view.get_item_link(last, Gio.MENU_LINK_SUBMENU)
+            self.assertEqual(languages.get_item_attribute_value(0, "label", None).get_string(), "跟随系统")
+            self.assertEqual(win.node_menu.get_menu_model().get_item_attribute_value(0, "label", None)
+                             .get_string().split()[0], "新增同级节点")
+            self.assertEqual(win.entry.get_text(), "茶 & water")
+            self.assertEqual(win.active.value, "File")
+            self.assertFalse(win.document.dirty)
+            win.edit_key(None, Gdk.KEY_Tab, 0, 0)
+            win.find_source()
+            win.source.search_entry.set_text("task")
+            win.source.move_match(1)
+            buffer = win.source.buffer
+            xml = buffer.get_text(*buffer.get_bounds(), True)
+            self.assertIn("<task>Save</task>", xml)
+            self.assertIn("茶 &amp; water", xml)
+
+            win.activate_action("win.language", GLib.Variant("s", "en"))
+            self.assertEqual(win.inspector.result[0].get_text(), "Changes have not been checked")
+            self.assertEqual(win.pages.get_tab_label_text(win.source), "XML Source")
+            self.assertEqual(win.source.search_entry.get_placeholder_text(), "Find in XML source (Ctrl+F)")
+            self.assertEqual(win.source.count.get_text(), "2 / 2")
+            self.assertEqual(buffer.get_text(*buffer.get_bounds(), True), xml)
+            self.assertFalse(group.get_expanded())
+            self.assertEqual(len(win.document.undo_stack), 1)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(i18n.preference_file().read_text().strip(), "en")
+
+            invalid = Path(temp) / "无效.xml"
+            invalid.write_text("<r></wrong>")
+            with patch.object(win, "show_error"):
+                win.open_path(invalid)
+            self.assertIn("mismatched tag", win.inspector.result[0].get_text())
+            win.activate_action("win.language", GLib.Variant("s", "zh_CN"))
+            self.assertIn("起始和结束标签不匹配", win.inspector.result[0].get_text())
+            self.assertEqual(win.inspector.result[1].get_text(), invalid.name)
+            win.history(False)
+            self.assertTrue(win.save())
+            self.assertEqual(path.read_bytes(), original)
 
     def test_undo_from_next_field_after_tab(self):
         with TemporaryDirectory() as temp:
@@ -103,7 +169,7 @@ class InputTest(unittest.TestCase):
             self.assertIn("茶 &amp; 水", buf.get_text(*buf.get_bounds(), False))
             self.assertEqual(path.read_bytes(), original)
             win.lookup_action("check").activate(None)
-            self.assertEqual(win.inspector.result[0].get_text(), "XML 格式正确")
+            self.assertEqual(win.inspector.result[0].get_text(), tr("XML is well-formed"))
             win.pages.set_current_page(0)
             win.request_edit(1)
             win.entry.set_text("a--b")
@@ -259,7 +325,7 @@ class InputTest(unittest.TestCase):
             page.search_key(None, Gdk.KEY_F3, 0, 0)
             self.assertEqual(page.count.get_text(), "1 / 3")
             page.search_entry.set_text("导航.*")
-            self.assertEqual(page.count.get_text(), "无匹配")
+            self.assertEqual(page.count.get_text(), tr("No matches"))
             self.assertFalse(page.buttons[1].get_sensitive())
             self.assertFalse(has_tag(positions[0], "match"))
 

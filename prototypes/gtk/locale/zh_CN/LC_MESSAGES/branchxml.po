@@ -1,0 +1,460 @@
+# Simplified Chinese translations for BranchXML.
+# Rebuild here with: msgfmt --check -o branchxml.mo branchxml.po
+msgid ""
+msgstr ""
+"Project-Id-Version: BranchXML\n"
+"PO-Revision-Date: 2026-11-25 00:00+0800\n"
+"Last-Translator: BranchXML contributors\n"
+"Language-Team: Simplified Chinese\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "File"
+msgstr "文件"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "View"
+msgstr "视图"
+
+msgid "Open…"
+msgstr "打开…"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save As…"
+msgstr "另存为…"
+
+msgid "Undo"
+msgstr "撤销"
+
+msgid "Redo"
+msgstr "重做"
+
+msgid "Find in XML Source…"
+msgstr "查找 XML 源码…"
+
+msgid "Tree View"
+msgstr "树视图"
+
+msgid "XML Source"
+msgstr "XML 源码"
+
+msgid "Go to File Path"
+msgstr "定位到文件路径"
+
+msgid "Show or Hide Inspector"
+msgstr "显示或隐藏检查面板"
+
+msgid "Check XML"
+msgstr "检查 XML"
+
+msgid "System Default"
+msgstr "跟随系统"
+
+msgid "Language"
+msgstr "语言"
+
+msgid "Open (Ctrl+O)"
+msgstr "打开（Ctrl+O）"
+
+msgid "Save (Ctrl+S)"
+msgstr "保存（Ctrl+S）"
+
+msgid "Save As (Ctrl+Shift+S)"
+msgstr "另存为（Ctrl+Shift+S）"
+
+msgid "Undo (Ctrl+Z)"
+msgstr "撤销（Ctrl+Z）"
+
+msgid "Redo (Ctrl+Shift+Z)"
+msgstr "重做（Ctrl+Shift+Z）"
+
+msgid "File path (Ctrl+L), press Enter to open"
+msgstr "文件路径（Ctrl+L），按 Enter 打开"
+
+msgid "File path"
+msgstr "文件路径"
+
+msgid "Node"
+msgstr "节点"
+
+msgid "Value"
+msgstr "值"
+
+msgid "Right-click a node for actions"
+msgstr "右键节点可操作"
+
+msgid "Ctrl+F Find  ·  F3 Next  ·  Shift+F3 Previous"
+msgstr "Ctrl+F 查找　·　F3 下一处　·　Shift+F3 上一处"
+
+msgid "Add Sibling"
+msgstr "新增同级节点"
+
+msgid "Add Child Element"
+msgstr "新增子元素"
+
+msgid "Add Attribute"
+msgstr "新增属性"
+
+msgid "Duplicate Node"
+msgstr "复制节点"
+
+msgid "Move Up"
+msgstr "上移节点"
+
+msgid "Move Down"
+msgstr "下移节点"
+
+msgid "Delete Node"
+msgstr "删除节点"
+
+msgid "Could not save the language preference"
+msgstr "无法保存界面语言设置"
+
+msgid "XML is well-formed"
+msgstr "XML 格式正确"
+
+#, python-brace-format
+msgid "Opened {filename}"
+msgstr "已打开 {filename}"
+
+msgid "Changes have not been checked"
+msgstr "修改后尚未检查"
+
+msgid "Add Element"
+msgstr "新增元素"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Add"
+msgstr "新增"
+
+msgid "XML name"
+msgstr "XML 名称"
+
+msgid "Could not update the node"
+msgstr "节点操作失败"
+
+msgid "Node updated  ·  Ctrl+Z to undo"
+msgstr "已更新节点　·　Ctrl+Z 撤销"
+
+msgid "Close"
+msgstr "关闭"
+
+#, python-brace-format
+msgid "Save changes to {filename}?"
+msgstr "保存对 {filename} 的修改？"
+
+msgid "Discard Changes"
+msgstr "放弃修改"
+
+msgid "Save As"
+msgstr "另存为"
+
+msgid "Open XML"
+msgstr "打开 XML"
+
+msgid "Open"
+msgstr "打开"
+
+#, python-brace-format
+msgid "{stem}-copy{suffix}"
+msgstr "{stem}-副本{suffix}"
+
+msgid "Choose a local file."
+msgstr "请选择本机文件"
+
+msgid "File dialog error"
+msgstr "文件对话框出错"
+
+msgid "Could not select the file"
+msgstr "无法选择文件"
+
+msgid "Could not open the file"
+msgstr "打开失败"
+
+msgid "Could not save the file"
+msgstr "保存失败"
+
+#, python-brace-format
+msgid "Saved to {path}"
+msgstr "已保存到 {path}"
+
+#, python-brace-format
+msgid "Edit the value of {name}"
+msgstr "编辑 {name} 的值"
+
+#, python-brace-format
+msgid "Editing {name}  ·  Enter to commit  ·  Tab to continue  ·  Esc to cancel"
+msgstr "编辑 {name}　·　Enter 提交　·　Tab 提交并继续　·　Esc 取消"
+
+#, python-brace-format
+msgid "Committed edit to {name}"
+msgstr "已提交 {name} 的编辑"
+
+#, python-brace-format
+msgid "Canceled edit to {name}"
+msgstr "已取消 {name} 的编辑"
+
+msgid "Reached the last visible value"
+msgstr "已到最后一个可见值"
+
+msgid "Reached the first visible value"
+msgstr "已到第一个可见值"
+
+#, python-brace-format
+msgid "Redid change to {name}"
+msgstr "已重做 {name} 的修改"
+
+#, python-brace-format
+msgid "Undid change to {name}"
+msgstr "已撤销 {name} 的修改"
+
+msgid "BranchXML GTK 4 XML editor."
+msgstr "BranchXML GTK 4 XML 编辑器。"
+
+msgid "XML file to open"
+msgstr "要打开的 XML 文件"
+
+msgid "BranchXML requires GTK 4.12 or later."
+msgstr "BranchXML 需要 GTK 4.12 或更高版本。"
+
+msgid "Element with child nodes"
+msgstr "含子节点的元素"
+
+msgid "Element value from CDATA"
+msgstr "元素值来自 CDATA 文本"
+
+msgid "XML element"
+msgstr "XML 元素"
+
+msgid "XML attribute"
+msgstr "XML 属性"
+
+msgid "XML processing instruction"
+msgstr "XML 处理指令"
+
+msgid "XML comment or text node"
+msgstr "XML 注释或文本节点"
+
+msgid "Description"
+msgstr "说明"
+
+msgid "Line"
+msgstr "行"
+
+msgid "Column"
+msgstr "列"
+
+msgid "Check Results"
+msgstr "检查结果"
+
+msgid "Node Info"
+msgstr "节点信息"
+
+msgid "Check XML syntax and namespaces"
+msgstr "检查当前文档的 XML 语法和命名空间"
+
+#, python-brace-format
+msgid "Children  {count}"
+msgstr "子项  {count}"
+
+#, python-brace-format
+msgid "Value  {value}"
+msgstr "值  {value}"
+
+msgid "Find in XML source (Ctrl+F)"
+msgstr "查找 XML 源码（Ctrl+F）"
+
+msgid "Find in XML source"
+msgstr "查找 XML 源码"
+
+msgid "Previous match (Shift+F3)"
+msgstr "上一个匹配（Shift+F3）"
+
+msgid "Next match (F3)"
+msgstr "下一个匹配（F3）"
+
+msgid "No matches"
+msgstr "无匹配"
+
+msgid "XML documents with a DTD are not supported."
+msgstr "不支持含 DTD 的 XML"
+
+#, python-brace-format
+msgid "Could not locate attribute {attribute} on {element}."
+msgstr "无法定位 {element} 的属性 {attribute}"
+
+msgid "An XML comment cannot contain -- or end with -."
+msgstr "XML 注释不能含有 -- 或以 - 结尾"
+
+msgid "An XML processing instruction cannot contain ?>."
+msgstr "XML 处理指令不能含有 ?>"
+
+msgid "There is no sibling to move past in this direction."
+msgstr "该方向没有可交换的同级节点。"
+
+msgid "The document must keep one root element. Select a child or add a child to the root."
+msgstr "文档必须保留一个根元素。请选择子节点，或给根元素添加子元素。"
+
+msgid "Select the element to add content to."
+msgstr "请先选择要添加内容的元素。"
+
+msgid "Enter a valid XML name."
+msgstr "请输入有效的 XML 名称。"
+
+msgid "Unknown node operation."
+msgstr "未知的节点操作"
+
+msgid "This file cannot be read and written byte for byte in its original encoding."
+msgstr "此文件的编码无法逐字节往返转换"
+
+msgid "This value has been merged or removed. Select its parent element."
+msgstr "当前值已合并或移除，请先选择其父元素。"
+
+msgid "The file on disk has changed. Use Save As to keep both versions."
+msgstr "磁盘文件已被修改。请另存为新文件以保留两份内容。"
+
+#, python-brace-format
+msgid "{reason} (line {line}, column {column})"
+msgstr "{reason}（第 {line} 行，第 {column} 列）"
+
+#. Diagnostic messages from the Expat XML parser.
+msgid "out of memory"
+msgstr "内存不足"
+
+msgid "syntax error"
+msgstr "XML 语法错误"
+
+msgid "no element found"
+msgstr "未找到完整的 XML 元素"
+
+msgid "not well-formed (invalid token)"
+msgstr "XML 格式错误，含无效标记"
+
+msgid "unclosed token"
+msgstr "标记未闭合"
+
+msgid "partial character"
+msgstr "字符不完整"
+
+msgid "mismatched tag"
+msgstr "起始和结束标签不匹配"
+
+msgid "duplicate attribute"
+msgstr "属性名重复"
+
+msgid "junk after document element"
+msgstr "根元素之后有多余的内容"
+
+msgid "illegal parameter entity reference"
+msgstr "参数实体引用无效"
+
+msgid "undefined entity"
+msgstr "实体未定义"
+
+msgid "recursive entity reference"
+msgstr "实体引用存在循环"
+
+msgid "asynchronous entity"
+msgstr "实体的开始和结束不在同一解析上下文中"
+
+msgid "reference to invalid character number"
+msgstr "字符引用的编号无效"
+
+msgid "reference to binary entity"
+msgstr "引用了二进制实体"
+
+msgid "reference to external entity in attribute"
+msgstr "属性中引用了外部实体"
+
+msgid "XML or text declaration not at start of entity"
+msgstr "XML 声明或文本声明必须位于实体开头"
+
+msgid "unknown encoding"
+msgstr "未知的编码"
+
+msgid "encoding specified in XML declaration is incorrect"
+msgstr "XML 声明指定的编码不正确"
+
+msgid "unclosed CDATA section"
+msgstr "CDATA 段未闭合"
+
+msgid "error in processing external entity reference"
+msgstr "处理外部实体引用时出错"
+
+msgid "document is not standalone"
+msgstr "文档依赖外部声明"
+
+msgid "unexpected parser state - please send a bug report"
+msgstr "解析器状态异常，请报告此问题"
+
+msgid "entity declared in parameter entity"
+msgstr "实体在参数实体中声明"
+
+msgid "requested feature requires XML_DTD support in Expat"
+msgstr "此功能需要 Expat 的 XML_DTD 支持"
+
+msgid "cannot change setting once parsing has begun"
+msgstr "解析开始后无法更改此设置"
+
+msgid "unbound prefix"
+msgstr "命名空间前缀未声明"
+
+msgid "must not undeclare prefix"
+msgstr "不能撤销前缀声明"
+
+msgid "incomplete markup in parameter entity"
+msgstr "参数实体中的标记不完整"
+
+msgid "XML declaration not well-formed"
+msgstr "XML 声明格式错误"
+
+msgid "text declaration not well-formed"
+msgstr "文本声明格式错误"
+
+msgid "illegal character(s) in public id"
+msgstr "公共标识符包含无效字符"
+
+msgid "parser suspended"
+msgstr "解析器已暂停"
+
+msgid "parser not suspended"
+msgstr "解析器尚未暂停"
+
+msgid "parsing aborted"
+msgstr "解析已中止"
+
+msgid "parsing finished"
+msgstr "解析已完成"
+
+msgid "cannot suspend in external parameter entity"
+msgstr "无法在外部参数实体内暂停解析"
+
+msgid "reserved prefix (xml) must not be undeclared or bound to another namespace name"
+msgstr "不能撤销保留前缀 xml 的声明或将其绑定到其他命名空间"
+
+msgid "reserved prefix (xmlns) must not be declared or undeclared"
+msgstr "不能声明保留前缀 xmlns，也不能撤销其声明"
+
+msgid "prefix must not be bound to one of the reserved namespace names"
+msgstr "不能将前缀绑定到保留的命名空间"
+
+msgid "invalid argument"
+msgstr "参数无效"
+
+msgid "a successful prior call to function XML_GetBuffer is required"
+msgstr "必须先成功调用 XML_GetBuffer"
+
+msgid "limit on input amplification factor (from DTD and entities) breached"
+msgstr "DTD 和实体展开超过输入放大限制"
+
+msgid "parser not started"
+msgstr "解析器尚未启动"

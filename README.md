@@ -4,7 +4,7 @@
 
 BranchXML is a desktop XML reader and editor for Ubuntu, built with Python and GTK 4. Browse the tree on the left and edit attribute values or text on the right. Saving a change preserves the original formatting everywhere else in the file.
 
-![Editing the second step’s summary in the value column. Its XML path appears below the tree.](docs/screenshots/tree-editing.png)
+![Editing the second step’s summary in the value column. Its XML path appears below the tree.](docs/screenshots/tree-editing-en.png)
 
 ## Quick start
 
@@ -15,6 +15,8 @@ From the repository root, run the following command to open the included herbal 
 ```sh
 /usr/bin/python3 prototypes/gtk/branchxml.py
 ```
+
+BranchXML follows your desktop language preferences and falls back to English. Choose **View → Language** (**视图 → 语言**) to switch between **System Default**, **English** and **简体中文**. The interface updates immediately and remembers your choice. The system file chooser follows your desktop’s language settings.
 
 In the second `step`, click the `5` next to `@minutes` and type a new steeping time. Press **Tab** to commit it and start editing the next value, the `summary` that reads “加入薄荷 & 柠檬” (add mint and lemon). Press **Esc** to discard edits to the summary and keep the new time.
 
@@ -37,13 +39,13 @@ Copying or moving an element preserves all its attribute values, including any s
 
 ## Reading and searching the source
 
-The **XML 源码** (XML source) tab shows a read-only view of the document, including committed edits you have yet to save. Element names, attribute names, strings, numbers and booleans have distinct colors.
+The **XML Source** tab shows a read-only view of the document, including committed edits you have yet to save. Element names, attribute names, strings, numbers and booleans have distinct colors.
 
 Press **Ctrl+F** from either view to search for text, a tag name or an attribute value. Search is literal and case-insensitive. Every match is highlighted, and the counter shows which match you are reading. **Enter** or **F3** moves to the next match and **Shift+F3** moves to the previous one. Both directions wrap around. In the search field, **Esc** clears the query and returns focus to the source.
 
-![Searching the XML source for “minutes”. Both occurrences are highlighted and the counter shows the second of two matches.](docs/screenshots/source-search.png)
+![Searching the XML source for “minutes”. Both occurrences are highlighted and the counter shows the second of two matches.](docs/screenshots/source-search-en.png)
 
-In the lower pane, **检查 XML** (Check XML) checks document syntax and namespaces. Errors include the line and column when the parser supplies them. **节点信息** (Node info) shows the selected node’s path and its value or child count. Drag the dividers to adjust the width of the node column or the height of the lower pane.
+In the lower pane, **Check XML** checks document syntax and namespaces. Errors include the line and column when the parser supplies them. **Node Info** shows the selected node’s path and its value or child count. Drag the dividers to adjust the width of the node column or the height of the lower pane.
 
 ## Saving and undoing changes
 
