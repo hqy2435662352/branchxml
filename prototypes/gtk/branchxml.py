@@ -11,7 +11,10 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
+import appearance
+from chrome import Chrome
 from document import Document, move_neighbor
+from inspector import Inspector
 
 
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
@@ -31,22 +34,33 @@ def cell_label():
 class RecipeWindow(Gtk.ApplicationWindow):
     def __init__(self, app, document):
         super().__init__(application=app)
-        self.set_default_size(820, 650)
+        self.set_default_size(920, 690)
+        self.add_css_class("branchxml")
+        appearance.install(self.get_display())
+        titlebar = Gtk.HeaderBar()
+        titlebar.add_css_class("bx-title")
+        titlebar.set_title_widget(Gtk.Box())
+        titlebar.pack_start(Gtk.Image.new_from_icon_name("application-xml"))
+        caption = Gtk.Label(ellipsize=Pango.EllipsizeMode.MIDDLE, xalign=0)
+        self.bind_property("title", caption, "label")
+        titlebar.pack_start(caption)
+        self.set_titlebar(titlebar)
         self.cells = {}
         self.active = None
         self.preedit = ""
         self.placed = False
 
         self.view = Gtk.ColumnView()
+        self.view.add_css_class("bx-tree")
         self.view.set_show_column_separators(True)
-        self.view.set_show_row_separators(True)
+        self.view.set_show_row_separators(False)
 
         names = Gtk.SignalListItemFactory()
         names.connect("setup", self.setup_name)
         names.connect("bind", self.bind_name)
         names.connect("unbind", lambda _, item: item.get_child().set_list_row(None))
         name_column = Gtk.ColumnViewColumn.new("节点", names)
-        name_column.set_fixed_width(285)
+        name_column.set_fixed_width(270)
         name_column.set_resizable(True)
         self.view.append_column(name_column)
 
@@ -75,6 +89,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         # A single native input context stays focused across Tab, including off-screen rows.
         self.field = Gtk.Box(visible=False)
         self.entry = Gtk.Entry(hexpand=True)
+        self.entry.add_css_class("bx-inline-editor")
         self.field.append(self.entry)
         self.overlay.add_overlay(self.field)
         self.overlay.connect("get-child-position", self.position_field)
@@ -88,19 +103,21 @@ class RecipeWindow(Gtk.ApplicationWindow):
         focus = Gtk.EventControllerFocus()
         focus.connect("leave", lambda *_: self.finish(True))
         self.entry.add_controller(focus)
-        self.status = Gtk.Label(ellipsize=Pango.EllipsizeMode.END, label="点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消",
-                                xalign=0, margin_start=10, margin_end=10, margin_top=7, margin_bottom=7)
+        self.status = Gtk.Label(ellipsize=Pango.EllipsizeMode.END, hexpand=True, xalign=0)
+        self.encoding = Gtk.Label()
+        statusbar = Gtk.Box(spacing=12)
+        statusbar.add_css_class("bx-status")
+        statusbar.append(self.status)
+        statusbar.append(self.encoding)
         layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        header = Gtk.HeaderBar()
-        for name, title, shortcut, callback in (
-                ("open", "打开", "<Control>o", lambda: self.choose_file(False)),
-                ("save", "保存", "<Control>s", self.save),
-                ("save-as", "另存为", "<Control><Shift>s", lambda: self.choose_file(True))):
+        for name, shortcut, callback in (
+                ("open", "<Control>o", lambda: self.choose_file(False)),
+                ("save", "<Control>s", self.save),
+                ("save-as", "<Control><Shift>s", lambda: self.choose_file(True))):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda *_, run=callback: run())
             self.add_action(action)
             app.set_accels_for_action("win." + name, [shortcut])
-            header.pack_start(Gtk.Button(label=title, action_name="win." + name))
         menu = Gio.Menu()
         for name, title in (("sibling", "新增同级节点　Insert"), ("child", "新增子元素　Ctrl+Insert"),
                             ("attribute", "新增属性　Alt+Insert"), ("duplicate", "复制节点　Ctrl+D"),
@@ -119,11 +136,30 @@ class RecipeWindow(Gtk.ApplicationWindow):
         context_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         context_click.connect("pressed", self.context_pressed)
         self.view.add_controller(context_click)
-        self.set_titlebar(header)
-        layout.append(self.overlay)
-        layout.append(self.status)
+        self.pages = Gtk.Notebook()
+        self.pages.add_css_class("bx-pages")
+        self.pages.append_page(self.overlay, Gtk.Label(label="树视图"))
+        self.source_view = Gtk.TextView(editable=False, monospace=True, left_margin=8, top_margin=6)
+        source_scroll = Gtk.ScrolledWindow()
+        source_scroll.set_child(self.source_view)
+        self.pages.append_page(source_scroll, Gtk.Label(label="XML 源码"))
+        self.pages.connect("switch-page", self.switch_page)
+
+        self.inspector = Inspector(self.check_xml)
+        workspace = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
+        workspace.add_css_class("bx-workspace")
+        workspace.set_start_child(self.pages)
+        workspace.set_end_child(self.inspector)
+        workspace.set_resize_end_child(False)
+        workspace.set_shrink_start_child(False)
+        self.inspector.set_size_request(-1, 108)
+        self.chrome = Chrome(self, app)
+        layout.append(self.chrome)
+        layout.append(workspace)
+        layout.append(statusbar)
         self.set_child(layout)
         self.set_document(document)
+        self.view.grab_focus()
         self.connect("close-request", self.close_requested)
 
     def set_document(self, document):
@@ -131,12 +167,49 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.document = document
         self.install_tree()
         self.update_title()
-        self.status.set_label(f"已打开 {document.path.name}　·　右键节点操作　·　点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消")
+        self.chrome.sync_path()
+        self.inspector.report("XML 格式正确", document.path)
+        self.refresh_source()
+        self.encoding.set_label(document.encoding.upper())
+        self.status.set_label(f"已打开 {document.path.name}　·　右键节点可操作")
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
         pos = 0
         while pos < min(80, self.rows.get_n_items()):
             self.rows.get_item(pos).set_expanded(True)
             pos += 1
+
+    def switch_page(self, notebook, page, index):
+        if index == 1 and hasattr(self, "document"):
+            self.finish(True)
+            self.refresh_source(force=True)
+
+    def refresh_source(self, force=False):
+        if not force and self.pages.get_current_page() != 1:
+            return
+        try:
+            xml = self.document.xml_bytes().decode("utf-8-sig")
+        except FILE_ERRORS as error:
+            xml = ""
+            self.inspector.set_visible(True)
+            self.inspector.set_current_page(0)
+            self.inspector.report(str(error), self.document.path, error)
+        self.source_view.get_buffer().set_text(xml)
+
+    def check_xml(self):
+        self.finish(True)
+        self.inspector.set_visible(True)
+        self.inspector.set_current_page(0)
+        try:
+            self.document.render()
+        except FILE_ERRORS as error:
+            self.inspector.report(str(error), self.document.path, error)
+        else:
+            self.inspector.report("XML 格式正确", self.document.path)
+
+    def changed(self):
+        self.inspector.report("修改后尚未检查", self.document.path)
+        self.inspector.select_node(self.selection.get_selected_item())
+        self.refresh_source()
 
     def install_tree(self):
         self.rows = Gtk.TreeListModel.new(self.document.roots, False, False,
@@ -150,6 +223,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.node_menu.popdown()
         item = self.selection.get_selected_item()
         row = item.get_item() if item else None
+        self.inspector.select_node(item)
         for name in ("sibling", "child", "attribute", "duplicate", "delete", "move-up", "move-down"):
             enabled = row is not None
             if enabled and name in ("move-up", "move-down"):
@@ -233,6 +307,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
                     tree_row.set_expanded(True)
                 pos += 1
         self.refresh_value(row)
+        self.changed()
         target = self.rows.get_child_row(row.path[0])
         for index in row.path[1:]:
             target.set_expanded(True)
@@ -243,7 +318,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.view.scroll_to(target.get_position(), self.value_column, flags, None)
         self.view.grab_focus()
 
+    def update_history_actions(self):
+        for action, stack in (("undo", self.document.undo_stack), ("redo", self.document.redo_stack)):
+            self.lookup_action(action).set_enabled(self.active is not None or bool(stack))
+
     def update_title(self):
+        self.update_history_actions()
         marker = "● " if self.document.dirty else ""
         self.set_title(f"{marker}{self.document.path.name} — BranchXML · GTK")
 
@@ -310,6 +390,9 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             doc = Document(path)
         except FILE_ERRORS as error:
+            self.inspector.report(str(error), Path(path), error)
+            self.inspector.set_visible(True)
+            self.inspector.set_current_page(0)
             self.show_error("打开失败", error)
             return
         self.set_document(doc)
@@ -319,27 +402,29 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             self.document.save(path or self.document.path)
         except FILE_ERRORS as error:
+            self.inspector.report(str(error), self.document.path, error)
             self.show_error("保存失败", error)
             return False
         self.update_title()
+        self.chrome.sync_path()
+        self.inspector.report("XML 格式正确", self.document.path)
         self.status.set_label(f"已保存到 {self.document.path}")
         return True
 
     def setup_name(self, factory, item):
         expander = Gtk.TreeExpander()
-        expander.set_child(cell_label())
+        expander.set_child(appearance.name_cell())
         item.set_child(expander)
 
     def bind_name(self, factory, item):
         tree_row = item.get_item()
         expander = item.get_child()
         expander.set_list_row(tree_row)
-        expander.get_child().set_text(tree_row.get_item().name)
+        appearance.set_name(expander.get_child(), tree_row.get_item())
 
     def setup_value(self, factory, item):
         label = cell_label()
         label.set_hexpand(True)
-        label.set_size_request(-1, 32)
         item.set_child(label)
         click = Gtk.GestureClick(button=1)
         click.connect("released", lambda *_: self.request_edit(item.get_position()))
@@ -349,6 +434,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         label = item.get_child()
         label.tree_row = item.get_item()
         row = label.row = label.tree_row.get_item()
+        appearance.set_value(label, row)
         label.set_text(row.value or "")
         label.set_tooltip_text(row.value or None)
         self.cells[row] = label
@@ -401,6 +487,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if self.active:
             self.commit_value()
         self.active = row
+        self.update_history_actions()
         self.placed = False
         self.selection.set_selected(pos)
         self.view.scroll_to(pos, self.value_column, Gtk.ListScrollFlags(0), None)
@@ -416,13 +503,17 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.status.set_label(f"编辑 {row.name}　·　Enter 提交　·　Tab 提交并继续　·　Esc 取消")
 
     def commit_value(self):
-        self.document.edit(self.active, self.entry.get_text())
+        value = self.entry.get_text()
+        if value != self.active.value:
+            self.document.edit(self.active, value)
+            self.changed()
         self.refresh_value(self.active)
 
     def refresh_value(self, row):
         self.update_title()
         label = self.cells.get(row)
         if label is not None:
+            appearance.set_value(label, row)
             label.set_text(row.value or "")
             label.set_tooltip_text(row.value or None)
 
@@ -436,6 +527,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.entry.reset_im_context()
         self.preedit = ""
         self.field.set_visible(False)
+        self.update_history_actions()
         self.status.set_label(("已提交" if commit else "已取消") + f" {name} 的编辑")
 
     def leave(self, commit):
@@ -462,6 +554,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if self.preedit or not (redo or (mods == ctrl and key == Gdk.KEY_z)):
             return False
 
+        focus = self.get_focus()
+        if focus and focus.get_ancestor(Gtk.Entry) not in (None, self.entry):
+            return False
+        return self.history(redo)
+
+    def history(self, redo):
         if self.active:
             # Give uncommitted typing first use of the shortcut, including local redo.
             before = self.entry.get_text()

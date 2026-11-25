@@ -1,6 +1,7 @@
 """Run on a graphical display with /usr/bin/python3 test_branchxml.py."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 import time
 import unittest
 
@@ -84,6 +85,52 @@ class InputTest(unittest.TestCase):
             win.open_path(path)
             self.assertEqual(win.document.roots.get_item(0).children.get_n_items(), 1)
             self.assertEqual(path.read_bytes(), original)
+
+    def test_source_preview_checks_and_address_bar(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "one.xml"
+            original = b"<r><!--note--><value>10</value></r>"
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(lambda: win.get_mapped())
+            self.assertFalse(win.lookup_action("undo").get_enabled())
+            win.request_edit(2)
+            win.entry.set_text("茶 & 水")
+            win.pages.set_current_page(1)
+            buf = win.source_view.get_buffer()
+            self.assertIn("茶 &amp; 水", buf.get_text(*buf.get_bounds(), False))
+            self.assertEqual(path.read_bytes(), original)
+            win.lookup_action("check").activate(None)
+            self.assertEqual(win.inspector.result[0].get_text(), "XML 格式正确")
+            win.pages.set_current_page(0)
+            win.request_edit(1)
+            win.entry.set_text("a--b")
+            win.check_xml()
+            self.assertIn("--", win.inspector.result[0].get_text())
+            self.assertEqual(path.read_bytes(), original)
+            for _ in range(2):
+                win.lookup_action("undo").activate(None)
+            self.assertFalse(win.document.dirty)
+
+            other = path.with_name("two.xml")
+            other.write_text("<other/>", encoding="utf-8")
+            win.pages.set_current_page(1)
+            win.chrome.address.set_text(other.name)
+            win.chrome.address.emit("activate")
+            self.assertEqual(win.document.path, other)
+            self.assertEqual(win.chrome.address.get_text(), str(other))
+            self.assertEqual(buf.get_text(*buf.get_bounds(), False), "<other/>")
+
+            invalid = path.with_name("invalid.xml")
+            invalid.write_text("<root>\n</wrong>", encoding="utf-8")
+            with patch.object(win, "show_error") as alert:
+                win.open_path(invalid)
+                alert.assert_called_once()
+            self.assertEqual(win.document.path, other)
+            self.assertEqual(win.inspector.result[1].get_text(), invalid.name)
+            self.assertEqual(win.inspector.result[2].get_text(), "2")
 
     def test_context_menu_targets_clicked_row(self):
         with TemporaryDirectory() as temp:
