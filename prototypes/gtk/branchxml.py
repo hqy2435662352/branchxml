@@ -48,11 +48,14 @@ class RecipeWindow(Gtk.ApplicationWindow):
         titlebar.pack_start(caption)
         self.set_titlebar(titlebar)
         self.cells = {}
+        self.padded_row = None
+        self.anchor_handler = None
         self.active = None
         self.preedit = ""
         self.placed = False
 
         self.view = Gtk.ColumnView()
+        self.view.connect("unmap", lambda *_: self.cancel_scroll_anchor())
         self.view.add_css_class("bx-tree")
         self.view.set_show_column_separators(True)
         self.view.set_show_row_separators(False)
@@ -95,6 +98,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.field.append(self.entry)
         self.overlay.add_overlay(self.field)
         self.overlay.connect("get-child-position", self.position_field)
+        scroll.get_vadjustment().connect("notify::page-size", self.limit_bottom_margin)
         for adjustment in (scroll.get_vadjustment(), scroll.get_hadjustment()):
             adjustment.connect("value-changed", lambda *_: self.overlay.queue_allocate())
         self.entry.get_delegate().connect("preedit-changed", self.preedit_changed)
@@ -179,6 +183,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         while pos < min(80, self.rows.get_n_items()):
             self.rows.get_item(pos).set_expanded(True)
             pos += 1
+        self.scroll_to_row(0)
 
     def switch_page(self, notebook, page, index):
         if not hasattr(self, "document"):
@@ -222,6 +227,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.refresh_source()
 
     def install_tree(self):
+        self.cancel_scroll_anchor()
+        self.clear_bottom_margin()
         self.rows = Gtk.TreeListModel.new(self.document.roots, False, False,
                                           lambda row: row.children if row.children.get_n_items() else None)
         self.watched_branches = set()
@@ -258,6 +265,81 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.watch_branches(branch, row.children)
         else:
             self.expanded.discard(key)
+        self.keep_branch_position(branch)
+
+    def row_widget(self, branch):
+        widget = self.cells.get(branch.get_item())
+        while widget is not None and widget.get_accessible_role() != Gtk.AccessibleRole.ROW:
+            widget = widget.get_parent()
+        return widget
+
+    def clear_bottom_margin(self):
+        if self.padded_row is not None:
+            self.padded_row.set_margin_bottom(0)
+            self.padded_row = None
+
+    def limit_bottom_margin(self, adjustment, _property):
+        row = self.padded_row
+        if row is not None:
+            # Keep the last node on screen at the scroll limit after the pane shrinks.
+            limit = max(0, int(adjustment.get_page_size()) - row.get_height())
+            row.set_margin_bottom(min(row.get_margin_bottom(), limit))
+
+    def cancel_scroll_anchor(self):
+        if self.anchor_handler is not None:
+            clock, handler = self.anchor_handler
+            clock.disconnect(handler)
+            self.anchor_handler = None
+
+    def scroll_to_row(self, pos, column=None, flags=Gtk.ListScrollFlags(0)):
+        # Explicit navigation supersedes a fold awaiting layout.
+        self.cancel_scroll_anchor()
+        self.view.scroll_to(pos, column, flags, None)
+
+    def keep_branch_position(self, branch):
+        self.cancel_scroll_anchor()
+        self.clear_bottom_margin()
+        if not self.view.get_mapped():
+            return
+        widget = self.row_widget(branch)
+        if widget is None or not widget.get_height():
+            return
+        ok, bounds = widget.compute_bounds(self.view)
+        if not ok:
+            return
+        height = self.view.get_height()
+        y = bounds.get_y()
+        header = height - self.view.get_vadjustment().get_page_size()
+        if y >= height or y + bounds.get_height() <= header:
+            return
+
+        # Keep GTK's virtualized row available while it lays out the new subtree.
+        self.view.scroll_to(branch.get_position(), None, Gtk.ListScrollFlags(0), None)
+
+        # GTK repeats layout before painting, so the user sees only the anchored position.
+        clock = self.view.get_frame_clock()
+        self.anchor_handler = clock, clock.connect_after("layout", self.restore_branch_position, branch, y)
+
+    def restore_branch_position(self, clock, branch, y):
+        row = self.row_widget(branch)
+        if row is None or not row.get_mapped():
+            self.cancel_scroll_anchor()
+            return
+        _, bounds = row.compute_bounds(self.view)
+        delta = round(bounds.get_y() - y)
+        adjustment = self.view.get_vadjustment()
+        target = adjustment.get_value() + delta
+        if self.padded_row is None and target > adjustment.get_upper() - adjustment.get_page_size():
+            last = self.row_widget(self.rows.get_item(self.rows.get_n_items() - 1))
+            if last is not None:
+                _, bounds = last.compute_bounds(self.view)
+                gap = round(self.view.get_height() - bounds.get_y() - bounds.get_height() + delta)
+                if gap > 0:
+                    self.padded_row = last
+                    last.set_margin_bottom(gap)
+                    return  # Apply the offset once GTK includes the margin in the scroll range.
+        self.cancel_scroll_anchor()
+        adjustment.set_value(target)
 
     def update_node_actions(self):
         self.node_menu.popdown()
@@ -291,7 +373,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         x, y = widget.translate_coordinates(self.node_menu.get_parent(), x, y)
         self.finish(True)
         self.selection.set_selected(tree_row.get_position())
-        self.view.scroll_to(tree_row.get_position(), None, Gtk.ListScrollFlags.FOCUS, None)
+        self.scroll_to_row(tree_row.get_position(), flags=Gtk.ListScrollFlags.FOCUS)
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
         self.node_menu.set_pointing_to(rect)
@@ -347,7 +429,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if rebuilt:
             target.set_expanded(True)
         flags = Gtk.ListScrollFlags.SELECT | Gtk.ListScrollFlags.FOCUS
-        self.view.scroll_to(target.get_position(), self.value_column, flags, None)
+        self.scroll_to_row(target.get_position(), self.value_column, flags)
         self.view.grab_focus()
 
     def update_history_actions(self):
@@ -475,6 +557,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def unbind_value(self, factory, item):
         label = item.get_child()
+        if self.padded_row is not None and label.is_ancestor(self.padded_row):
+            self.clear_bottom_margin()
         self.cells.pop(label.row, None)
         label.row = label.tree_row = None
 
@@ -522,7 +606,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.update_history_actions()
         self.placed = False
         self.selection.set_selected(pos)
-        self.view.scroll_to(pos, self.value_column, Gtk.ListScrollFlags(0), None)
+        self.scroll_to_row(pos, self.value_column)
         # Reusing the entry must not carry typing history from the previous field.
         self.entry.set_enable_undo(False)
         self.entry.set_text(row.value)

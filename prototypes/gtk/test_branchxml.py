@@ -163,6 +163,62 @@ class InputTest(unittest.TestCase):
             self.assertFalse(win.document.dirty)
             self.assertFalse(win.document.undo_stack)
 
+    def test_fold_near_end_keeps_row_under_pointer(self):
+        for following in ("", "<after/>"):
+            with self.subTest(following=following), TemporaryDirectory() as temp:
+                path = Path(temp) / "recipe.xml"
+                xml = ("<recipe>" + "<step/>" * 200 + "<params>" + "<param/>" * 7
+                       + "</params>" + following + "</recipe>")
+                path.write_text(xml)
+                win = RecipeWindow(self.app, Document(path))
+                self.addCleanup(win.destroy)
+                params = win.rows.get_child_row(0).get_child_row(200)
+                params.set_expanded(True)
+                win.present()
+                scroll = win.view.get_vadjustment()
+                wait_for(lambda: scroll.get_page_size() > 0 and scroll.get_upper() > scroll.get_page_size())
+                scroll.set_value(scroll.get_upper() - scroll.get_page_size())
+
+                def center(row):
+                    label = win.cells.get(row.get_item())
+                    if label is not None and label.get_height():
+                        _, bounds = label.compute_bounds(win.view)
+                        return bounds.get_y() + bounds.get_height() / 2
+                    return -1
+
+                wait_for(lambda: 0 < center(params) < win.view.get_height() - 100)
+                clock = win.view.get_frame_clock()
+
+                def toggle(expanded):
+                    before = center(params)
+                    painted = []
+                    handler = clock.connect_after("after-paint", lambda *_: painted.append(center(params)))
+                    try:
+                        params.set_expanded(expanded)
+                        wait_for(lambda: painted)
+                        win.view.queue_draw()
+                        wait_for(lambda: len(painted) >= 2)
+                    finally:
+                        clock.disconnect(handler)
+                    self.assertTrue(all(abs(y - before) <= 1 for y in painted), (before, painted))
+
+                toggle(False)
+                if following:
+                    after = win.rows.get_child_row(0).get_child_row(201)
+                    self.assertGreater(center(after), center(params))
+                    self.assertLess(center(after) - center(params), 2 * win.cells[params.get_item()].get_height())
+                click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+                win.context_pressed(click, 1, 60, win.view.get_height() - 12)
+                self.assertFalse(win.node_menu.get_visible())
+
+                old_y = center(params)
+                scroll.set_value(scroll.get_value() - 35)
+                wait_for(lambda: center(params) > old_y + 30)
+                toggle(True)
+                self.assertEqual(len(params.get_children()), 7)
+                self.assertFalse(win.document.dirty)
+                self.assertEqual(path.read_bytes(), xml.encode())
+
     def test_source_colors_and_literal_search(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "recipe.xml"
