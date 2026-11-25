@@ -1,62 +1,64 @@
 # BranchXML
 
-BranchXML 是一款面向 Ubuntu 的桌面 XML 阅读与编辑器，使用 Python 和 GTK 4 开发。左侧按层级浏览节点，右侧直接修改属性和文本值。保存时只替换改动的 XML 片段，保留其余内容的原始格式。
+**English** · [简体中文](README.zh-CN.md)
 
-## 快速开始
+BranchXML is a desktop XML reader and editor for Ubuntu, built with Python and GTK 4. Browse the tree on the left and edit attribute values or text on the right. Saving a change preserves the original formatting everywhere else in the file.
 
-需要系统 Python 3、GTK 4.12 或更高版本、PyGObject 和 Pygments。Ubuntu 上对应的运行依赖是 `python3`、`gir1.2-gtk-4.0`、`python3-gi` 和 `python3-pygments`。
+![Editing the second step’s summary in the value column. Its XML path appears below the tree.](docs/screenshots/tree-editing.png)
 
-在仓库根目录运行以下命令，即可打开随附的花草茶配方。
+## Quick start
+
+Use the system Python 3 with GTK 4.12 or later, PyGObject and Pygments. The corresponding Ubuntu packages are `python3`, `gir1.2-gtk-4.0`, `python3-gi` and `python3-pygments`.
+
+From the repository root, run the following command to open the included herbal tea recipe.
 
 ```sh
 /usr/bin/python3 prototypes/gtk/branchxml.py
 ```
 
-点击第二个 `step` 下 `@minutes` 右边的 `5`，输入新的时长。按 Tab 会提交时长，并直接进入下一行 `summary` 的「加入薄荷 & 柠檬」。在这里按 Esc 可以取消这一个字段的编辑。
+In the second `step`, click the `5` next to `@minutes` and type a new steeping time. Press **Tab** to commit it and start editing the next value, the `summary` that reads “加入薄荷 & 柠檬” (add mint and lemon). Press **Esc** to discard edits to the summary and keep the new time.
 
-要打开自己的 XML，可以把文件路径作为命令参数传入，也可以在窗口中按 Ctrl+O 选择文件。Ctrl+L 聚焦地址栏，输入相对路径时，以当前 XML 所在目录为起点。
+To open your own XML file, pass its path on the command line or press **Ctrl+O** in the editor. **Ctrl+L** focuses the address bar. Relative paths resolve from the current document’s directory.
 
-## 树形阅读与编辑
+## Working in the tree
 
-树视图用图标和颜色区分节点类型。收起或展开分支时，点击的那一行保持在原来的屏幕位置，文档末尾允许留白。再次展开父节点时，各层子节点会恢复各自的展开状态。
+Icons and colors distinguish node types. A row stays under the pointer when you collapse or expand it, even at the end of a document. Reopening a parent restores each descendant’s previous expansion state.
 
-| 操作 | 用法 |
+| Action | How to use it |
 | --- | --- |
-| 修改单行值 | 点击右栏的值，或选中该行按 F2。Enter 提交，Esc 取消。 |
-| 连续改值 | Tab 提交并进入下一个可见的可编辑值，Shift+Tab 反向。中文输入法先处理候选词按键。 |
-| 打开节点菜单 | 右键点击节点名称或同行的值。键盘操作可用 Shift+F10 或菜单键。 |
-| 新增节点 | Insert 新增同级元素或属性。Ctrl+Insert 添加子元素，Alt+Insert 添加属性。输入名称后按 Enter 确认。 |
-| 复制或删除 | Ctrl+D 在原节点后复制整棵子树。Delete 删除选中节点及其子节点。 |
-| 调整顺序 | Alt+↑ / Alt+↓ 与上一个或下一个同级节点交换，子树随元素一起移动。 |
+| Edit a single-line value | Click the value or select its row and press **F2**. **Enter** commits the edit and **Esc** cancels it. |
+| Edit consecutive values | **Tab** commits and advances to the next visible editable value. **Shift+Tab** moves back. A Chinese input method handles candidate selection first. |
+| Open the node menu | Right-click either column on the target row, or select the row and press **Shift+F10** or the **Menu** key. |
+| Add a node | **Insert** adds a sibling element or attribute. **Ctrl+Insert** adds a child element and **Alt+Insert** adds an attribute. Type the name and press **Enter**. |
+| Duplicate or delete | **Ctrl+D** copies the selected node and its descendants immediately after the original. **Delete** removes the selected subtree. |
+| Reorder siblings | **Alt+↑** or **Alt+↓** swaps the selection with the previous or next sibling. Child nodes move with their parent. |
 
-复制元素会沿用其全部属性值，包括配方中的序号。复制单个属性时会生成可用的新名称。移动元素会保留原序号。普通文本节点移到一起后，XML 会把相邻的文本读成一个节点。
+Copying or moving an element preserves all its attribute values, including any sequence numbers in a recipe. Duplicating a single attribute gives the copy an available name. XML treats adjacent text nodes as one text node.
 
-## 源码与检查
+## Reading and searching the source
 
-「XML 源码」页显示当前文档的只读源码，包括已提交、尚未保存的修改。元素名、属性名、字符串、数字和布尔值分别着色。
+The **XML 源码** (XML source) tab shows a read-only view of the document, including committed edits you have yet to save. Element names, attribute names, strings, numbers and booleans have distinct colors.
 
-从任一视图按 Ctrl+F 即可查找中文、标签名或属性值。查找按字面匹配，忽略英文字母大小写。所有匹配项都会高亮，搜索框旁显示当前是第几项及总数。Enter 或 F3 跳到下一处，Shift+F3 回到上一处，到达首尾会循环。在搜索框按 Esc 可清空查找并返回源码。
+Press **Ctrl+F** from either view to search for text, a tag name or an attribute value. Search is literal and case-insensitive. Every match is highlighted, and the counter shows which match you are reading. **Enter** or **F3** moves to the next match and **Shift+F3** moves to the previous one. Both directions wrap around. In the search field, **Esc** clears the query and returns focus to the source.
 
-下方的「检查 XML」检查语法和命名空间，解析器提供位置时会显示错误行列。「节点信息」显示选中节点的路径和值或子项数量。可以拖动分隔线调整节点栏宽度和检查面板高度。
+![Searching the XML source for “minutes”. Both occurrences are highlighted and the counter shows the second of two matches.](docs/screenshots/source-search.png)
 
-## 保存与撤销
+In the lower pane, **检查 XML** (Check XML) checks document syntax and namespaces. Errors include the line and column when the parser supplies them. **节点信息** (Node info) shows the selected node’s path and its value or child count. Drag the dividers to adjust the width of the node column or the height of the lower pane.
 
-Ctrl+S 保存，Ctrl+Shift+S 另存为，保存时会一并提交正在编辑的值。写入前会校验 XML。若原文件已被其他程序修改，编辑器会提示另存为。另存为后继续编辑新文件。打开其他文件或关闭窗口时，可以保存、放弃修改或取消操作。
+## Saving and undoing changes
 
-只改一个值时，其他位置的缩进、属性引号、实体写法、CDATA、BOM 和换行都会保留。新增、复制、移动和删除节点也只改动相应的 XML 片段。给自闭合元素添加文本时，该元素会展开为一对标签。已验证 UTF-8 和 UTF-16 文件的读写。打开含 DTD 的文档时会提示错误。
+**Ctrl+S** saves the file. **Ctrl+Shift+S** saves a copy and continues editing that file. Both actions commit the active field and check the XML before writing. If another program has changed the original on disk, BranchXML prompts you to save a separate copy. Opening another file or closing the window with unsaved edits gives you the choice to save, discard or cancel.
 
-Ctrl+Z 撤销，Ctrl+Shift+Z 或 Ctrl+Y 重做。连续用 Tab 改几个值时，每个实际改动的字段算一步。新增、复制、移动和删除节点也都可以逐步撤销。正在输入时，先撤销输入框里的文字。保存后仍可撤销，打开另一个文件时重新开始记录。
+Changing one value preserves the indentation, attribute quotes, entity spellings, CDATA, byte order mark and line endings outside that edit. Structural edits also affect only the relevant XML fragments. Adding text to a self-closing element produces a matching pair of tags. Reading and saving have been tested with UTF-8 and UTF-16 files. Opening a document with a DTD reports an error.
 
-## 运行测试
+**Ctrl+Z** undoes a change. **Ctrl+Shift+Z** or **Ctrl+Y** redoes it. Each value changed with Tab and each node operation is a separate undo step. While typing, undo acts on the active field first. Saving keeps the undo history, and opening another file starts a new history.
 
-在 Ubuntu 图形会话中，从仓库根目录运行整套测试，覆盖键盘编辑、树视图折叠、源码查找以及保存前后的字节一致性。
+## Running the tests
+
+From the repository root in an Ubuntu graphical session, run the full suite for keyboard editing, tree folding, source search and byte-for-byte save behavior.
 
 ```sh
 /usr/bin/python3 -m unittest discover -s prototypes/gtk
 ```
 
-只检查文档读写和撤销逻辑时，可以运行 `/usr/bin/python3 prototypes/gtk/test_document.py`。中文输入另在 Wayland 会话中用 Fcitx 4 和搜狗拼音验证过连续选词、Tab 切换和 Esc 取消。
-
-## Qt 6 对照原型
-
-仓库保留了早期的 C++ / Qt 6 实现，用于对照编辑手感。[Qt 原型的构建、快捷键和测试](docs/qt-prototype.md)
+For document I/O and undo tests alone, run `/usr/bin/python3 prototypes/gtk/test_document.py`. Chinese candidate selection, Tab navigation and Esc cancellation have also been checked on Wayland with Fcitx 4 and Sogou Pinyin.
