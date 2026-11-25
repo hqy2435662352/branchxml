@@ -1,53 +1,20 @@
 #!/usr/bin/python3
-"""GTK 4 interaction prototype. All edits live in memory."""
+"""BranchXML GTK 4 XML editor."""
 
 import argparse
 import sys
 from pathlib import Path
-from xml.dom import Node, minidom
 from xml.parsers.expat import ExpatError
 
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
+
+from document import Document
 
 
-class XmlRow(GObject.Object):
-    def __init__(self, name, value=None):
-        super().__init__()
-        self.name = name
-        self.value = value
-        self.children = Gio.ListStore.new(XmlRow)
-
-
-def row_for(node):
-    if node.nodeType != Node.ELEMENT_NODE:
-        return XmlRow(node.nodeName, node.nodeValue)
-    children = node.childNodes
-    text_types = (Node.TEXT_NODE, Node.CDATA_SECTION_NODE)
-    if not node.hasAttributes() and (not children or
-            (len(children) == 1 and children[0].nodeType in text_types)):
-        return XmlRow(node.tagName, children[0].data if children else "")
-
-    row = XmlRow(node.tagName)
-    for attr in node.attributes.values():
-        row.children.append(XmlRow("@" + attr.name, attr.value))
-    for child in children:
-        if child.nodeType == Node.TEXT_NODE and not child.data.strip():
-            continue
-        row.children.append(row_for(child))
-    return row
-
-
-def read_rows(path):
-    with minidom.parse(str(path)) as doc:
-        roots = Gio.ListStore.new(XmlRow)
-        for child in doc.childNodes:
-            if child.nodeType == Node.DOCUMENT_TYPE_NODE:
-                raise ValueError("此原型不支持 DTD")
-            roots.append(row_for(child))
-        return roots
+FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
 
 
 def is_editable(row):
@@ -62,18 +29,15 @@ def cell_label():
 
 
 class RecipeWindow(Gtk.ApplicationWindow):
-    def __init__(self, app, path, roots):
-        super().__init__(application=app, title=f"{path.name} — BranchXML · GTK")
+    def __init__(self, app, document):
+        super().__init__(application=app)
         self.set_default_size(820, 650)
         self.cells = {}
         self.active = None
         self.preedit = ""
         self.placed = False
 
-        self.rows = Gtk.TreeListModel.new(roots, False, False,
-                                          lambda row: row.children if row.children.get_n_items() else None)
-        self.selection = Gtk.SingleSelection.new(self.rows)
-        self.view = Gtk.ColumnView.new(self.selection)
+        self.view = Gtk.ColumnView()
         self.view.set_show_column_separators(True)
         self.view.set_show_row_separators(True)
 
@@ -119,17 +83,122 @@ class RecipeWindow(Gtk.ApplicationWindow):
         focus = Gtk.EventControllerFocus()
         focus.connect("leave", lambda *_: self.finish(True))
         self.entry.add_controller(focus)
-        self.status = Gtk.Label(ellipsize=Pango.EllipsizeMode.END, label="仅在内存试改　·　点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消",
+        self.status = Gtk.Label(ellipsize=Pango.EllipsizeMode.END, label="点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消",
                                 xalign=0, margin_start=10, margin_end=10, margin_top=7, margin_bottom=7)
         layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        header = Gtk.HeaderBar()
+        for name, title, shortcut, callback in (
+                ("open", "打开", "<Control>o", lambda: self.choose_file(False)),
+                ("save", "保存", "<Control>s", self.save),
+                ("save-as", "另存为", "<Control><Shift>s", lambda: self.choose_file(True))):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda *_, run=callback: run())
+            self.add_action(action)
+            app.set_accels_for_action("win." + name, [shortcut])
+            header.pack_start(Gtk.Button(label=title, action_name="win." + name))
+        self.set_titlebar(header)
         layout.append(self.overlay)
         layout.append(self.status)
         self.set_child(layout)
+        self.set_document(document)
+        self.connect("close-request", self.close_requested)
+
+    def set_document(self, document):
+        self.finish(False)
+        self.document = document
+        self.rows = Gtk.TreeListModel.new(document.roots, False, False,
+                                          lambda row: row.children if row.children.get_n_items() else None)
+        self.selection = Gtk.SingleSelection.new(self.rows)
+        self.view.set_model(self.selection)
+        self.update_title()
+        self.status.set_label(f"已打开 {document.path.name}　·　点值或按 F2 编辑　·　Tab 下一值　·　Esc 取消")
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
         pos = 0
         while pos < min(80, self.rows.get_n_items()):
             self.rows.get_item(pos).set_expanded(True)
             pos += 1
+
+    def update_title(self):
+        marker = "● " if self.document.dirty else ""
+        self.set_title(f"{marker}{self.document.path.name} — BranchXML · GTK")
+
+    def show_error(self, message, error):
+        Gtk.AlertDialog(message=message, detail=str(error)).show(self)
+
+    def confirm_changes(self, proceed):
+        self.finish(True)
+        if not self.document.dirty:
+            proceed()
+            return
+        dialog = Gtk.AlertDialog(message=f"保存对 {self.document.path.name} 的修改？",
+                                 buttons=["取消", "放弃修改", "保存"],
+                                 cancel_button=0, default_button=2)
+
+        def answered(dialog, result):
+            try:
+                answer = dialog.choose_finish(result)
+            except GLib.Error:
+                return
+            if answer == 1 or (answer == 2 and self.save()):
+                proceed()
+
+        dialog.choose(self, None, answered)
+
+    def close_requested(self, *_):
+        self.finish(True)
+        if not self.document.dirty:
+            return False
+        self.confirm_changes(self.destroy)
+        return True
+
+    def choose_file(self, save_as):
+        self.finish(True)
+        path = self.document.path
+        dialog = Gtk.FileDialog(title="另存为" if save_as else "打开 XML", modal=True)
+        dialog.set_initial_folder(Gio.File.new_for_path(str(path.absolute().parent)))
+        if save_as:
+            dialog.set_initial_name(path.stem + "-副本" + path.suffix)
+            dialog.save(self, None, self.file_chosen, True)
+        else:
+            dialog.open(self, None, self.file_chosen, False)
+
+    def file_chosen(self, dialog, result, save_as):
+        try:
+            file = dialog.save_finish(result) if save_as else dialog.open_finish(result)
+            path = file.get_path()
+            if path is None:
+                raise ValueError("请选择本机文件")
+        except GLib.Error as error:
+            if not any(error.matches(Gtk.DialogError.quark(), code)
+                       for code in (Gtk.DialogError.DISMISSED, Gtk.DialogError.CANCELLED)):
+                self.show_error("文件对话框出错", error)
+            return
+        except ValueError as error:
+            self.show_error("无法选择文件", error)
+            return
+        if save_as:
+            self.save(path)
+        else:
+            self.confirm_changes(lambda: self.open_path(path))
+
+    def open_path(self, path):
+        try:
+            doc = Document(path)
+        except FILE_ERRORS as error:
+            self.show_error("打开失败", error)
+            return
+        self.set_document(doc)
+
+    def save(self, path=None):
+        self.finish(True)
+        try:
+            self.document.save(path or self.document.path)
+        except FILE_ERRORS as error:
+            self.show_error("保存失败", error)
+            return False
+        self.update_title()
+        self.status.set_label(f"已保存到 {self.document.path}")
+        return True
 
     def setup_name(self, factory, item):
         expander = Gtk.TreeExpander()
@@ -217,7 +286,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.status.set_label(f"编辑 {row.name}　·　Enter 提交　·　Tab 提交并继续　·　Esc 取消")
 
     def commit_value(self):
-        self.active.value = self.entry.get_text()
+        self.document.edit(self.active, self.entry.get_text())
+        self.update_title()
         label = self.cells.get(self.active)
         if label is not None:
             label.set_text(self.active.value)
@@ -233,7 +303,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.entry.reset_im_context()
         self.preedit = ""
         self.field.set_visible(False)
-        self.status.set_label(("已提交" if commit else "已取消") + f" {name} 的编辑　·　仅在内存试改")
+        self.status.set_label(("已提交" if commit else "已取消") + f" {name} 的编辑")
 
     def leave(self, commit):
         if self.active and not self.preedit:
@@ -287,12 +357,12 @@ def main():
     if Gtk.check_version(4, 12, 0):
         parser.exit(1, "此原型需要 GTK 4.12 或更高版本。\n")
     try:
-        roots = read_rows(path)
-    except (OSError, ExpatError, ValueError, RecursionError) as error:
+        document = Document(path)
+    except FILE_ERRORS as error:
         parser.exit(1, f"{path}: {error}\n")
     app = Gtk.Application(application_id="io.github.branchxml.InputPrototype",
                           flags=Gio.ApplicationFlags.NON_UNIQUE)
-    app.connect("activate", lambda app: RecipeWindow(app, path, roots).present())
+    app.connect("activate", lambda app: RecipeWindow(app, document).present())
     return app.run([])
 
 

@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 import time
 import unittest
 
-from branchxml import Gdk, GLib, Gio, Gtk, RecipeWindow, read_rows
+from branchxml import Gdk, GLib, Gio, Gtk, RecipeWindow, Document
 
 
 def wait_for(condition):
@@ -29,7 +29,7 @@ class InputTest(unittest.TestCase):
             path.write_text(original, encoding="utf-8")
             app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
             app.register(None)
-            win = RecipeWindow(app, path, read_rows(path))
+            win = RecipeWindow(app, Document(path))
             self.addCleanup(win.destroy)
             win.present()
             wait_for(lambda: win.get_mapped() and win.get_width() > 0)
@@ -63,6 +63,20 @@ class InputTest(unittest.TestCase):
             win.entry.set_text("屏幕外的行")
             win.entry.emit("activate")
             self.assertEqual(win.rows.get_item(76).get_item().value, "屏幕外的行")
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+            # Save As includes the still-active field, then Ctrl+S targets the new path.
+            win.request_edit(1)
+            win.entry.set_text("另存时的值")
+            copy = path.with_name("copy.xml")
+            self.assertTrue(win.save(copy))
+            win.request_edit(1)
+            win.entry.set_text("保存时的值")
+            win.lookup_action("save").activate(None)
+            self.assertIn('name="保存时的值"', copy.read_text(encoding="utf-8"))
+            self.assertFalse(win.document.dirty)
+            win.open_path(path)
+            self.assertEqual(win.rows.get_item(1).get_item().value, "测试")
             self.assertEqual(path.read_text(encoding="utf-8"), original)
 
 
