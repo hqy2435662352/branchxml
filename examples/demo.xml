@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<recipe name="花草茶">
+  <step minutes="2">
+    <summary><![CDATA[温杯]]></summary>
+  </step>
+  <step minutes="5">
+    <summary><![CDATA[加入薄荷 & 柠檬]]></summary>
+  </step>
+</recipe>
