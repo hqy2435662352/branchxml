@@ -224,9 +224,32 @@ def line_indent(xml, row, parent, roots):
     return b""
 
 
+def move_neighbor(roots, row, operation):
+    siblings = row_at(roots, row.path[:-1]).children if len(row.path) > 1 else roots
+    index = row.path[-1] + (-1 if operation == "move-up" else 1)
+    if 0 <= index < siblings.get_n_items():
+        neighbor = siblings.get_item(index)
+        if row.name.startswith("@") == neighbor.name.startswith("@"):
+            return neighbor
+    return None
+
+
 def node_splice(xml, roots, row, operation, name):
     """Return the range, replacement bytes and selection offset in the result."""
     start, end = row.bounds
+    if operation in ("move-up", "move-down"):
+        neighbor = move_neighbor(roots, row, operation)
+        if neighbor is None:
+            raise ValueError("该方向没有可交换的同级节点。")
+        left, right = (neighbor, row) if operation == "move-up" else (row, neighbor)
+        first, first_end = left.bounds
+        second, last = right.bounds
+        # The gap belongs to the layout, including whitespace between attributes.
+        gap = xml[first_end:second]
+        swapped = xml[second:last] + gap + xml[first:first_end]
+        selected = first if operation == "move-up" else first + (last - second) + len(gap)
+        return first, last, swapped, selected
+
     parent = row_at(roots, row.path[:-1]) if len(row.path) > 1 else None
     attr = row.name.startswith("@")
     if operation in ("duplicate", "sibling", "delete") and row.element and parent is None:

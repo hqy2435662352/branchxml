@@ -11,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
-from document import Document
+from document import Document, move_neighbor
 
 
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
@@ -104,6 +104,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         menu = Gio.Menu()
         for name, title in (("sibling", "新增同级节点　Insert"), ("child", "新增子元素　Ctrl+Insert"),
                             ("attribute", "新增属性　Alt+Insert"), ("duplicate", "复制节点　Ctrl+D"),
+                            ("move-up", "上移节点　Alt+↑"), ("move-down", "下移节点　Alt+↓"),
                             ("delete", "删除节点　Delete")):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda action, _: self.node_command(action.get_name()))
@@ -140,9 +141,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def update_node_actions(self):
         item = self.selection.get_selected_item()
         row = item.get_item() if item else None
-        for name in ("sibling", "child", "attribute", "duplicate", "delete"):
+        for name in ("sibling", "child", "attribute", "duplicate", "delete", "move-up", "move-down"):
             enabled = row is not None
-            if enabled and name in ("child", "attribute"):
+            if enabled and name in ("move-up", "move-down"):
+                enabled = move_neighbor(self.rows.get_model(), row, name) is not None
+            elif enabled and name in ("child", "attribute"):
                 enabled = row.element
             elif enabled and len(row.path) == 1:
                 enabled = not row.element and name != "sibling"
@@ -151,7 +154,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def node_command(self, operation):
         self.finish(True)
         row = self.selection.get_selected_item().get_item()
-        if operation in ("duplicate", "delete"):
+        if operation in ("duplicate", "delete", "move-up", "move-down"):
             self.change_node(row, operation)
             return
         attribute = operation == "attribute" or (operation == "sibling" and row.name.startswith("@"))
@@ -458,6 +461,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
         commands = {
             (Gdk.KEY_Insert, 0): "sibling", (Gdk.KEY_Insert, Gdk.ModifierType.CONTROL_MASK): "child",
             (Gdk.KEY_Insert, Gdk.ModifierType.ALT_MASK): "attribute",
+            (Gdk.KEY_Up, Gdk.ModifierType.ALT_MASK): "move-up",
+            (Gdk.KEY_Down, Gdk.ModifierType.ALT_MASK): "move-down",
             (Gdk.KEY_d, Gdk.ModifierType.CONTROL_MASK): "duplicate", (Gdk.KEY_Delete, 0): "delete",
         }
         command = commands.get((Gdk.keyval_to_lower(key), mods))

@@ -9,7 +9,7 @@ from branchxml import Gdk, GLib, Gio, Gtk, RecipeWindow, Document
 
 def wait_for(condition):
     main = GLib.MainContext.default()
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 8  # A throttled Wayland window can take several seconds to lay out a row.
     while time.monotonic() < deadline:
         while main.pending():
             main.iteration(False)

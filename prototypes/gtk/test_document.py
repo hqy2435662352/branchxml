@@ -165,6 +165,42 @@ class SaveTest(unittest.TestCase):
             doc.structure(clone, "delete")
             self.assertEqual(doc.render(), body)
 
+    def test_move_subtree_with_pending_edit_and_undo_after_save(self):
+        first = b"<task id='a'><s><![CDATA[A&B]]></s></task>"
+        second = b'<task id="b"><param v="&#49;"/></task>'
+        gap = b"\r\n\t"
+        original = b"<r>" + first + gap + second + b"</r>"
+        self.path.write_bytes(original)
+        doc = Document(self.path)
+        doc.edit(row_at(doc.roots, (0, 0, 0)), "longer")
+        selected = doc.structure(row_at(doc.roots, (0, 1)), "move-up")
+        self.assertEqual(selected.path, (0, 0))
+        changed_first = first.replace(b"'a'", b"'longer'")
+        doc.save(self.copy)
+        self.assertEqual(self.copy.read_bytes(), b"<r>" + second + gap + changed_first + b"</r>")
+        self.assertEqual(doc.step_history(False).path, (0, 1))
+        self.assertEqual(doc.render(), original.replace(first, changed_first))
+        self.assertEqual(doc.step_history(True).path, (0, 0))
+        self.assertFalse(doc.dirty)
+        reopened = Document(self.copy)
+        moved = reopened.structure(row_at(reopened.roots, (0, 0)), "move-down")
+        self.assertEqual(moved.path, (0, 1))
+        reopened.save(self.copy)
+        self.assertEqual(self.copy.read_bytes(), original.replace(first, changed_first))
+
+    def test_attribute_order_and_move_boundaries(self):
+        self.path.write_bytes(b"<r a = '1'\n  b=\"2\"><c/></r>")
+        doc = Document(self.path)
+        moved = doc.structure(row_at(doc.roots, (0, 0)), "move-down")
+        self.assertEqual(moved.name, "@a")
+        self.assertEqual(doc.render(), b"<r b=\"2\"\n  a = '1'><c/></r>")
+        for path, operation in (((0, 1), "move-down"), ((0, 2), "move-up"), ((0,), "move-up")):
+            with self.assertRaises(ValueError):
+                doc.structure(row_at(doc.roots, path), operation)
+        self.assertEqual(len(doc.undo_stack), 1)
+        doc.structure(moved, "move-up")
+        self.assertFalse(doc.dirty)
+
     def test_dtd_rejected_during_open(self):
         self.path.write_bytes(b'<!DOCTYPE r [<!ENTITY item "text">]><r>&item;</r>')
         with self.assertRaisesRegex(ValueError, "DTD"):
