@@ -20,6 +20,40 @@ def wait_for(condition):
 
 
 class InputTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
+        cls.app.register(None)
+
+    def test_undo_from_next_field_after_tab(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            original = b"<r name='a' n='1'><summary><![CDATA[tea]]></summary><end /></r>"
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(lambda: win.get_mapped())
+            win.request_edit(1)
+            for value in ("b", "2", "茶"):
+                win.entry.set_text(value)
+                win.edit_key(None, Gdk.KEY_Tab, 0, 0)
+            self.assertEqual(win.active.name, "end")
+            ctrl = Gdk.ModifierType.CONTROL_MASK
+            for pos, value in ((3, "tea"), (2, "1"), (1, "a")):
+                self.assertTrue(win.history_key(None, Gdk.KEY_z, 0, ctrl))
+                self.assertEqual(win.selection.get_selected(), pos)
+                self.assertEqual(win.rows.get_item(pos).get_item().value, value)
+            for key, mods in ((Gdk.KEY_y, ctrl), (Gdk.KEY_Z, ctrl | Gdk.ModifierType.SHIFT_MASK),
+                              (Gdk.KEY_y, ctrl)):
+                self.assertTrue(win.history_key(None, key, 0, mods))
+            self.assertTrue(win.save())
+            self.assertNotEqual(path.read_bytes(), original)
+            for _ in range(3):
+                win.history_key(None, Gdk.KEY_z, 0, ctrl)
+            self.assertTrue(win.save())
+            self.assertEqual(path.read_bytes(), original)
+
     def test_tab_cancel_and_recycled_rows(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "recipe.xml"
@@ -27,9 +61,7 @@ class InputTest(unittest.TestCase):
                 f'<step n="{i}"><summary><![CDATA[茶 & 水]]></summary></step>' for i in range(50)
             ) + '</recipe>'
             path.write_text(original, encoding="utf-8")
-            app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
-            app.register(None)
-            win = RecipeWindow(app, Document(path))
+            win = RecipeWindow(self.app, Document(path))
             self.addCleanup(win.destroy)
             win.present()
             wait_for(lambda: win.get_mapped() and win.get_width() > 0)

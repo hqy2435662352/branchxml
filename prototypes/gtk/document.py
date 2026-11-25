@@ -166,8 +166,27 @@ class Document:
         self.roots = parse_rows(self.source)
         self.modified = set()
         self.dirty = set()
+        self.undo_stack = []
+        self.redo_stack = []
 
     def edit(self, row, value):
+        if row.value == value:
+            return
+        self.undo_stack.append((row, row.value, value))
+        self.redo_stack.clear()
+        self._set_value(row, value)
+
+    def step_history(self, redo):
+        source, target = (self.redo_stack, self.undo_stack) if redo else (self.undo_stack, self.redo_stack)
+        if not source:
+            return None
+        change = source.pop()
+        row, before, after = change
+        self._set_value(row, after if redo else before)
+        target.append(change)
+        return row
+
+    def _set_value(self, row, value):
         row.value = value
         for rows, baseline in ((self.modified, row.original), (self.dirty, row.saved)):
             if value == baseline:

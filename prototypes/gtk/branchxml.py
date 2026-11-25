@@ -58,6 +58,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.value_column.set_expand(True)
         self.view.append_column(self.value_column)
 
+        history_keys = Gtk.EventControllerKey()
+        history_keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        history_keys.connect("key-pressed", self.history_key)
+        self.add_controller(history_keys)
+
         keys = Gtk.EventControllerKey()
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self.navigation_key)
@@ -277,7 +282,10 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.placed = False
         self.selection.set_selected(pos)
         self.view.scroll_to(pos, self.value_column, Gtk.ListScrollFlags(0), None)
+        # Reusing the entry must not carry typing history from the previous field.
+        self.entry.set_enable_undo(False)
         self.entry.set_text(row.value)
+        self.entry.set_enable_undo(True)
         self.entry.update_property([Gtk.AccessibleProperty.LABEL], [f"编辑 {row.name} 的值"])
         self.overlay.queue_allocate()
         self.field.set_visible(True)
@@ -287,11 +295,14 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def commit_value(self):
         self.document.edit(self.active, self.entry.get_text())
+        self.refresh_value(self.active)
+
+    def refresh_value(self, row):
         self.update_title()
-        label = self.cells.get(self.active)
+        label = self.cells.get(row)
         if label is not None:
-            label.set_text(self.active.value)
-            label.set_tooltip_text(self.active.value or None)
+            label.set_text(row.value)
+            label.set_tooltip_text(row.value or None)
 
     def finish(self, commit):
         if self.active is None:
@@ -319,6 +330,35 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if self.active:
             self.leave(True)
         self.status.set_label("已到最后一个可见值" if direction > 0 else "已到第一个可见值")
+
+    def history_key(self, controller, key, code, mods):
+        mods &= Gtk.accelerator_get_default_mod_mask()
+        ctrl = Gdk.ModifierType.CONTROL_MASK
+        key = Gdk.keyval_to_lower(key)
+        redo = ((mods == ctrl and key == Gdk.KEY_y) or
+                (mods == (ctrl | Gdk.ModifierType.SHIFT_MASK) and key == Gdk.KEY_z))
+        if self.preedit or not (redo or (mods == ctrl and key == Gdk.KEY_z)):
+            return False
+
+        if self.active:
+            # Give uncommitted typing first use of the shortcut, including local redo.
+            before = self.entry.get_text()
+            self.entry.get_delegate().activate_action("text.redo" if redo else "text.undo", None)
+            if self.entry.get_text() != before or before != self.active.value:
+                return True
+
+        row = self.document.step_history(redo)
+        if row is not None:
+            self.finish(False)
+            self.refresh_value(row)
+            for pos, tree_row in enumerate(self.rows):
+                if tree_row.get_item() is row:
+                    self.view.scroll_to(pos, self.value_column, Gtk.ListScrollFlags.SELECT, None)
+                    break
+            self.view.grab_focus()
+            verb = "重做" if redo else "撤销"
+            self.status.set_label(f"已{verb} {row.name} 的修改")
+        return True
 
     def edit_key(self, controller, key, code, mods):
         if not self.active or key not in (Gdk.KEY_Escape, Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):

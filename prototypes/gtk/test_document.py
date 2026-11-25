@@ -35,6 +35,31 @@ class SaveTest(unittest.TestCase):
         doc.save(self.copy)
         self.assertEqual(self.copy.read_bytes(), original)
 
+    def test_history_across_save_and_diverging_edits(self):
+        original = b"\xef\xbb\xbf<r a = 'A&#38;B'><b><![CDATA[tea]]></b></r>\r\n"
+        self.path.write_bytes(original)
+        doc = Document(self.path)
+        a, b = doc.roots.get_item(0).children
+        doc.edit(a, "first")
+        doc.edit(b, "second")
+        doc.edit(a, "third")
+        doc.save(self.copy)
+        for row, expected in ((a, "first"), (b, "tea"), (a, "A&B")):
+            self.assertIs(doc.step_history(False), row)
+            self.assertEqual(row.value, expected)
+        self.assertIsNone(doc.step_history(False))
+        self.assertTrue(doc.dirty)
+        doc.save(self.copy)
+        self.assertEqual(self.copy.read_bytes(), original)
+        doc.edit(b, "tea")  # Passing through a field keeps the redo chain.
+        for row, expected in ((a, "first"), (b, "second"), (a, "third")):
+            self.assertIs(doc.step_history(True), row)
+            self.assertEqual(row.value, expected)
+        self.assertIsNone(doc.step_history(True))
+        doc.step_history(False)
+        doc.edit(b, "different")
+        self.assertIsNone(doc.step_history(True))
+
     def test_cdata_empty_element_and_text_in_utf16(self):
         original = "<?xml version='1.0' encoding='UTF-16'?><r><a><![CDATA[]]></a><b /><c>A&amp;B</c></r>"
         self.path.write_bytes(original.encode("utf-16"))
