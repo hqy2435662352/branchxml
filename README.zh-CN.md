@@ -1,16 +1,18 @@
 # BranchXML — Linux 桌面的树形 XML 编辑器
 
-[下载 Ubuntu 安装包（.deb，v0.1.0）](https://github.com/hqy2435662352/branchxml/releases/download/v0.1.0/branchxml_0.1.0_all.deb) · [最新版本和校验文件](https://github.com/hqy2435662352/branchxml/releases/latest) · [English](README.md)
+[下载架构无关的 .deb 安装包（v0.1.0）](https://github.com/hqy2435662352/branchxml/releases/download/v0.1.0/branchxml_0.1.0_all.deb) · [最新版本和校验文件](https://github.com/hqy2435662352/branchxml/releases/latest) · [English](README.md)
 
 打开一份 XML 配置或配方文件，在左侧树里找到节点，点右侧的值就能修改。按 **Tab** 可以接着改下一个字段。只改一个值时，周围的 XML 会逐字节保留，包括缩进、属性引号和换行。
 
-如果你在 Windows 上用过 Microsoft XML Notepad，会认得这种两栏布局。在 Ubuntu 上，你也可以搜索已收起的分支，用 XPath 定位属性，或用本地 XML Schema（XSD）校验文件。
+如果你在 Windows 上用过 Microsoft XML Notepad，会认得这种两栏布局。你也可以搜索已收起的分支，用 XPath 定位属性，或用本地 XML Schema（XSD）校验文件。
 
 ![Ubuntu 上的 BranchXML。左栏展开了配方的第二个步骤，右栏正在编辑该步骤的说明。](docs/screenshots/tree-editing.png)
 
 ## 在 Ubuntu 上安装
 
-BranchXML 已在 **Ubuntu 24.04 LTS 和 26.04 LTS** 上验证。在保存 `.deb` 安装包的目录执行
+amd64 和 arm64 下载同一个 `.deb`。包中包含 Python 程序和应用资源，架构字段为 `Architecture: all`。发行版需要为本机架构提供相应依赖，其中包括 GTK 4.12 或更高版本。
+
+BranchXML 0.1.0 已在 **amd64 架构的 Ubuntu 24.04 LTS 和 26.04 LTS** 上实测。在保存 `.deb` 安装包的目录执行
 
 ```sh
 sudo apt install ./branchxml_0.1.0_all.deb

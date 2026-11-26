@@ -1,16 +1,18 @@
 # BranchXML — a visual XML editor for Linux
 
-[Download for Ubuntu (.deb, v0.1.0)](https://github.com/hqy2435662352/branchxml/releases/download/v0.1.0/branchxml_0.1.0_all.deb) · [Latest release and checksums](https://github.com/hqy2435662352/branchxml/releases/latest) · [简体中文](README.zh-CN.md)
+[Download the architecture-independent .deb (v0.1.0)](https://github.com/hqy2435662352/branchxml/releases/download/v0.1.0/branchxml_0.1.0_all.deb) · [Latest release and checksums](https://github.com/hqy2435662352/branchxml/releases/latest) · [简体中文](README.zh-CN.md)
 
 Browse a local configuration file or recipe in a two-column XML viewer. The left column shows the node tree. Click a value on the right to edit it, then press **Tab** to move to the next field. Changing one value preserves the surrounding XML byte for byte, including indentation, attribute quotes and line endings.
 
-If you use Microsoft XML Notepad on Windows, the two-column layout will look familiar. On Ubuntu you can also search collapsed branches, locate an attribute with XPath, or validate a file against a local XML Schema (XSD).
+If you use Microsoft XML Notepad on Windows, the two-column layout will look familiar. You can also search collapsed branches, locate an attribute with XPath, or validate a file against a local XML Schema (XSD).
 
 ![BranchXML on Ubuntu with the second recipe step expanded. Its summary is selected for editing in the value column.](docs/screenshots/tree-editing-en.png)
 
 ## Install on Ubuntu
 
-BranchXML has been tested on **Ubuntu 24.04 LTS and 26.04 LTS**. From the directory containing the downloaded `.deb`, run
+For amd64 or arm64, download the same `.deb`. It contains Python code and application resources and is marked `Architecture: all`. Your distribution must provide the runtime dependencies for your architecture, including GTK 4.12 or later.
+
+BranchXML 0.1.0 has been tested on **Ubuntu 24.04 LTS and 26.04 LTS (amd64)**. From the directory containing the downloaded `.deb`, run
 
 ```sh
 sudo apt install ./branchxml_0.1.0_all.deb
