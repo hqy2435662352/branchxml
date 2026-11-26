@@ -1,34 +1,59 @@
-# BranchXML
+# BranchXML — Linux 桌面的树形 XML 编辑器
 
-[English](README.md) · **简体中文**
+[下载 Ubuntu 安装包（.deb，v0.1.0）](https://github.com/hqy2435662352/branchxml/releases/download/v0.1.0/branchxml_0.1.0_all.deb) · [最新版本和校验文件](https://github.com/hqy2435662352/branchxml/releases/latest) · [English](README.md)
 
-BranchXML 是一款面向 Ubuntu 的桌面 XML 阅读与编辑器，使用 Python 和 GTK 4 开发。左侧按层级浏览节点，右侧直接修改属性和文本值。保存时只替换改动的 XML 片段，保留其余内容的原始格式。
+打开一份 XML 配置或配方文件，在左侧树里找到节点，点右侧的值就能修改。按 **Tab** 可以接着改下一个字段。只改一个值时，周围的 XML 会逐字节保留，包括缩进、属性引号和换行。
 
-![树视图中正在编辑第二个步骤的 summary，底部显示该节点的 XML 路径。](docs/screenshots/tree-editing.png)
+如果你在 Windows 上用过 Microsoft XML Notepad，会认得这种两栏布局。在 Ubuntu 上，你也可以搜索已收起的分支，用 XPath 定位属性，或用本地 XML Schema（XSD）校验文件。
 
-## 安装与打开文件
+![Ubuntu 上的 BranchXML。左栏展开了配方的第二个步骤，右栏正在编辑该步骤的说明。](docs/screenshots/tree-editing.png)
 
-已发布版本的 Ubuntu 安装包和源码包可在 [GitHub Releases](https://github.com/hqy2435662352/branchxml/releases) 获取。
+## 在 Ubuntu 上安装
 
-在 Ubuntu 24.04 LTS 和 26.04 LTS 上，可以从下载目录运行 `sudo apt install ./branchxml_0.1.0_all.deb`，由系统安装应用及运行依赖。安装后，在文件管理器右键 XML，选择 **打开方式 → BranchXML**，也可以将文件拖进窗口，或运行 `branchxml "我的配方.xml"`。从应用菜单启动会打开未命名文档，**Ctrl+N** 可以新建，首次保存时选择路径。
+BranchXML 已在 **Ubuntu 24.04 LTS 和 26.04 LTS** 上验证。在保存 `.deb` 安装包的目录执行
 
-也可以从源码压缩包或仓库运行 `./install.py`，只安装到当前账户的 `~/.local`。卸载用 `./install.py --uninstall`。解释器需要 GTK 4.12 或更高版本、PyGObject、Pygments 和 lxml。Ubuntu 对应的软件包是 `gir1.2-gtk-4.0`、`python3-gi`、`python3-pygments` 和 `python3-lxml`。如果依赖已装在虚拟环境里，可用 `--python /路径/venv/bin/python` 指定解释器。
+```sh
+sudo apt install ./branchxml_0.1.0_all.deb
+```
 
-在源码目录运行以下命令，可直接试用随附的花草茶配方。
+在应用菜单中搜索 **BranchXML** 即可启动。也可以右键 XML 文件选择 **打开方式 → BranchXML**，把文件拖入窗口，或在终端运行 `branchxml "我的配方.xml"`。
+
+界面默认跟随桌面语言，找不到匹配时使用英语。在 **视图 → 语言**（**View → Language**）里可选择 **跟随系统**、**English** 或 **简体中文**，立即生效，下次启动也会记住。系统文件选择器跟随桌面语言。
+
+<details>
+<summary>仅为当前用户安装，或从源码运行</summary>
+
+在解压后的源码目录或仓库根目录运行 `./install.py`，默认安装到 `~/.local`。卸载用 `./install.py --uninstall`。BranchXML 使用 Python、GTK 4.12 或更高版本、PyGObject、Pygments 和 lxml。Ubuntu 对应的软件包是 `gir1.2-gtk-4.0`、`python3-gi`、`python3-pygments` 和 `python3-lxml`。依赖装在虚拟环境时，可用 `--python /路径/venv/bin/python` 指定解释器。
+
+要直接从源码打开示例，可运行
 
 ```sh
 /usr/bin/python3 prototypes/gtk/branchxml.py examples/demo.xml
 ```
 
-编辑器默认跟随桌面的首选语言，找不到匹配时使用英语。在 **视图 → 语言**（**View → Language**）中可选择 **跟随系统**、**English** 或 **简体中文**，切换立即生效，下次启动也会记住。系统文件选择器使用桌面的语言设置。
+</details>
 
-点击第二个 `step` 下 `@minutes` 右边的 `5`，输入新的时长。按 Tab 会提交时长，并直接进入下一行 `summary` 的「加入薄荷 & 柠檬」。在这里按 Esc 可以取消这一个字段的编辑。
+## 试一次只改一个值
 
-要打开自己的 XML，可以把文件路径作为命令参数传入，也可以在窗口中按 Ctrl+O 选择文件。Ctrl+L 聚焦地址栏，输入相对路径时，以当前 XML 所在目录为起点。
+随附的花草茶配方有两个步骤。安装 `.deb` 后，运行 `branchxml /usr/share/branchxml/examples/demo.xml` 打开示例，按 **Ctrl+Shift+S** 在主目录里另存一份副本。[查看示例 XML](examples/demo.xml)
+
+1. 在第二个 `step` 下，点击 `@minutes` 右侧的 `5`，输入 `8`。
+2. 按 **Tab**，时长会提交，光标进入下一项 `summary`。随意输入几个字，再按 **Esc**，说明就会恢复为「加入薄荷 & 柠檬」。
+3. 打开 **视图 → 查看未保存的改动**，可以看到只有泡茶时长发生了变化。
+
+```diff
+-  <step minutes="5">
++  <step minutes="8">
+```
+
+关掉对比窗口，按 **Ctrl+Z** 撤销时长修改，再保存，副本就与原文件逐字节一致。
 
 ## 树形阅读与编辑
 
-树视图用图标和颜色区分节点类型。收起或展开分支时，点击的那一行保持在原来的屏幕位置，文档末尾允许留白。再次展开父节点时，各层子节点会恢复各自的展开状态。
+右键点击节点，可以连同子节点一起复制、移动或删除。把元素拖到另一个父节点上，也能移动整棵子树。树视图用图标和颜色区分节点类型。收起分支时，点击的那一行保持在原来的屏幕位置，文档末尾允许留白。再次展开父节点时，各层子节点会恢复各自的展开状态。
+
+<details>
+<summary>键盘快捷键和节点操作</summary>
 
 | 操作 | 用法 |
 | --- | --- |
@@ -44,6 +69,8 @@ BranchXML 是一款面向 Ubuntu 的桌面 XML 阅读与编辑器，使用 Pytho
 | 新增各类内容 | 右键元素，选择「新增文本、注释或处理指令…」，可添加文本、CDATA、注释或处理指令。 |
 
 复制元素会沿用其全部属性值，包括配方中的序号。复制单个属性时会生成可用的新名称。移动元素会保留原序号。普通文本节点移到一起后，XML 会把相邻的文本读成一个节点。
+
+</details>
 
 ## 源码与检查
 
@@ -62,6 +89,8 @@ BranchXML 是一款面向 Ubuntu 的桌面 XML 阅读与编辑器，使用 Pytho
 通过 **视图 → 使用 XML Schema 校验…** 可为当前文档选择本地 XSD 1.0。每次提交编辑后会刷新检查结果，点击行号跳到源码。模式文件可以引用其目录及子目录中的本地文件。打开另一份文档时会清除模式。模式错误供诊断使用，保存时要求 XML 格式正确。
 
 ## 保存与撤销
+
+直接启动应用或按 **Ctrl+N** 可新建未命名文档，第一次保存时选择路径。**Ctrl+O** 打开已有的 XML 文件，**Ctrl+L** 聚焦地址栏。输入相对路径时，以当前文档的目录为起点。
 
 Ctrl+S 保存，Ctrl+Shift+S 另存为，保存时会一并提交正在编辑的值。写入前会校验 XML。若原文件已被其他程序修改，编辑器会提示另存为。另存为后继续编辑新文件。打开其他文件或关闭窗口时，可以保存、放弃修改或取消操作。
 

@@ -1,34 +1,59 @@
-# BranchXML
+# BranchXML — a visual XML editor for Linux
 
-**English** · [简体中文](README.zh-CN.md)
+[Download for Ubuntu (.deb, v0.1.0)](https://github.com/hqy2435662352/branchxml/releases/download/v0.1.0/branchxml_0.1.0_all.deb) · [Latest release and checksums](https://github.com/hqy2435662352/branchxml/releases/latest) · [简体中文](README.zh-CN.md)
 
-BranchXML is a desktop XML reader and editor for Ubuntu, built with Python and GTK 4. Browse the tree on the left and edit attribute values or text on the right. Saving a change preserves the original formatting everywhere else in the file.
+Browse a local configuration file or recipe in a two-column XML viewer. The left column shows the node tree. Click a value on the right to edit it, then press **Tab** to move to the next field. Changing one value preserves the surrounding XML byte for byte, including indentation, attribute quotes and line endings.
 
-![Editing the second step’s summary in the value column. Its XML path appears below the tree.](docs/screenshots/tree-editing-en.png)
+If you use Microsoft XML Notepad on Windows, the two-column layout will look familiar. On Ubuntu you can also search collapsed branches, locate an attribute with XPath, or validate a file against a local XML Schema (XSD).
 
-## Install and open a file
+![BranchXML on Ubuntu with the second recipe step expanded. Its summary is selected for editing in the value column.](docs/screenshots/tree-editing-en.png)
 
-Prebuilt packages and source archives for published versions are listed on [GitHub Releases](https://github.com/hqy2435662352/branchxml/releases).
+## Install on Ubuntu
 
-On Ubuntu 24.04 LTS and 26.04 LTS, the Debian package installs BranchXML and its runtime dependencies. From the directory containing the downloaded package, run `sudo apt install ./branchxml_0.1.0_all.deb`. Choose **Open With → BranchXML** on a local XML file, drop a file onto the window, or run `branchxml "my recipe.xml"`. Launching the app without a file opens an untitled document. **Ctrl+N** starts another document and the first save opens the file chooser.
+BranchXML has been tested on **Ubuntu 24.04 LTS and 26.04 LTS**. From the directory containing the downloaded `.deb`, run
 
-For a user-only installation from the source archive or checkout, run `./install.py`. The default prefix is `~/.local`; `./install.py --uninstall` removes it. The interpreter needs GTK 4.12 or later, PyGObject, Pygments and lxml. Ubuntu provides these through `gir1.2-gtk-4.0`, `python3-gi`, `python3-pygments` and `python3-lxml`. Use `--python /path/to/venv/bin/python` to select another interpreter with the same dependencies.
+```sh
+sudo apt install ./branchxml_0.1.0_all.deb
+```
 
-To try the included herbal tea recipe directly from the checkout or source archive, run
+Launch **BranchXML** from the applications menu, choose **Open With → BranchXML** on an XML file, or run `branchxml "my recipe.xml"`. You can also drop a local file onto the window.
+
+The interface follows your desktop language and falls back to English. Under **View → Language**, choose **System Default**, **English** or **简体中文**. The change takes effect immediately and is remembered next time. The system file chooser follows the desktop language.
+
+<details>
+<summary>Install for your user account or run from source</summary>
+
+From the extracted source archive or a checkout, run `./install.py` to install under `~/.local`. To uninstall, run `./install.py --uninstall`. BranchXML uses Python, GTK 4.12 or later, PyGObject, Pygments and lxml. Ubuntu provides these through `gir1.2-gtk-4.0`, `python3-gi`, `python3-pygments` and `python3-lxml`. Use `--python /path/to/venv/bin/python` to select an interpreter with those dependencies.
+
+To try the editor directly from the source directory, run
 
 ```sh
 /usr/bin/python3 prototypes/gtk/branchxml.py examples/demo.xml
 ```
 
-BranchXML follows your desktop language preferences and falls back to English. Choose **View → Language** (**视图 → 语言**) to switch between **System Default**, **English** and **简体中文**. The interface updates immediately and remembers your choice. The system file chooser follows your desktop’s language settings.
+</details>
 
-In the second `step`, click the `5` next to `@minutes` and type a new steeping time. Press **Tab** to commit it and start editing the next value, the `summary` that reads “加入薄荷 & 柠檬” (add mint and lemon). Press **Esc** to discard edits to the summary and keep the new time.
+## Try a one-value edit
 
-To open your own XML file, pass its path on the command line or press **Ctrl+O** in the editor. **Ctrl+L** focuses the address bar. Relative paths resolve from the current document’s directory.
+The bundled tea recipe has two steps. After installing the `.deb`, open it with `branchxml /usr/share/branchxml/examples/demo.xml`. Press **Ctrl+Shift+S** to save a working copy in your home folder. [View the sample XML](examples/demo.xml)
+
+1. In the second `step`, click the `5` beside `@minutes` and type `8`.
+2. Press **Tab**. The time is committed and the next field, `summary`, opens for editing. Type a few letters and press **Esc** to restore the original instructions.
+3. Open **View → Changes Since Save**. Only the steeping time has changed.
+
+```diff
+-  <step minutes="5">
++  <step minutes="8">
+```
+
+Close the comparison and press **Ctrl+Z**. Saving now restores the working copy to the original bytes.
 
 ## Working in the tree
 
-Icons and colors distinguish node types. A row stays under the pointer when you collapse or expand it, even at the end of a document. Reopening a parent restores each descendant’s previous expansion state.
+Right-click a node to duplicate, move or delete it with its children, or drag an element to another parent. Icons and colors distinguish node types. A row stays under the pointer when you collapse it, even at the end of a document. Reopening a parent restores each descendant’s previous expansion state.
+
+<details>
+<summary>Keyboard shortcuts and node commands</summary>
 
 | Action | How to use it |
 | --- | --- |
@@ -45,6 +70,8 @@ Icons and colors distinguish node types. A row stays under the pointer when you 
 
 Copying or moving an element preserves all its attribute values, including any sequence numbers in a recipe. Duplicating a single attribute gives the copy an available name. XML treats adjacent text nodes as one text node.
 
+</details>
+
 ## Finding and validating XML
 
 In the tree, **Ctrl+F** or **Ctrl+I** searches names and values, including collapsed descendants. **F3** and **Shift+F3** step through matching rows. **Esc** returns to the selected row, ready for **F2**. **Ctrl+H** replaces text inside the current value or across matching values in one undo step. Enable **Match case** or **Regex** as needed. Regex replacements accept capture groups such as `\1`.
@@ -59,9 +86,11 @@ On the source tab, **Ctrl+F** searches the displayed XML literally, ignoring cas
 
 In the lower pane, **Check XML** checks document syntax and namespaces. Errors include the line and column when the parser supplies them. **Node Info** shows the selected node’s path and its value or child count. Drag the dividers to adjust the width of the node column or the height of the lower pane.
 
-Use **View → Validate with XML Schema…** to attach a local XSD 1.0 file. Committing edits updates the diagnostics. Click a line number to jump to the source. Schema includes and imports can use files within the selected schema’s folder and its subdirectories. Opening another document clears the schema. Schema errors are advisory; saving requires well-formed XML.
+Use **View → Validate with XML Schema…** to attach a local XSD 1.0 file. Committing edits updates the diagnostics. Click a line number to jump to the source. Schema includes and imports can use files within the selected schema’s folder and its subdirectories. Opening another document clears the schema. Schema errors are advisory. Saving requires well-formed XML.
 
 ## Saving and undoing changes
+
+Launch without a file or press **Ctrl+N** to start an untitled document. The first save opens the file chooser. **Ctrl+O** opens an existing XML file and **Ctrl+L** focuses the address bar. Relative paths resolve from the current document’s directory.
 
 **Ctrl+S** saves the file. **Ctrl+Shift+S** saves a copy and continues editing that file. Both actions commit the active field and check the XML before writing. If another program has changed the original on disk, BranchXML prompts you to save a separate copy. Opening another file or closing the window with unsaved edits gives you the choice to save, discard or cancel.
 
