@@ -30,6 +30,31 @@ class InputTest(unittest.TestCase):
         cls.app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
         cls.app.register(None)
 
+    def test_expandable_rows_keep_their_tint_when_folded(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "tree.xml"
+            path.write_text("<root><group><value>one</value></group><leaf/></root>")
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            root = win.rows.get_child_row(0)
+            group, leaf = root.get_child_row(0), root.get_child_row(1)
+
+            def check(branch, expected):
+                node = branch.get_item()
+                wait_for(lambda: node in win.cells and node in win.name_cells.values())
+                name = next(box for box, item in win.name_cells.items() if item is node)
+                for widget in (name.get_parent(), win.cells[node]):
+                    self.assertEqual(widget.has_css_class("bx-branch"), expected)
+
+            check(root, True)
+            check(group, True)
+            check(leaf, False)
+            group.set_expanded(False)
+            check(group, True)
+            group.set_expanded(True)
+            check(group.get_child_row(0), False)
+
     def test_find_hidden_values_replace_undo_and_multiline(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "recipe.xml"

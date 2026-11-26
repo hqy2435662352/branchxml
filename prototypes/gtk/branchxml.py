@@ -49,8 +49,6 @@ def is_editable(row):
 def cell_label():
     label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
     label.set_single_line_mode(True)
-    label.set_margin_start(5)
-    label.set_margin_end(5)
     return label
 
 

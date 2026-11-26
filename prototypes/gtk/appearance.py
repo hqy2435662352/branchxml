@@ -17,6 +17,7 @@ COLORS = {
     "canvas": ("#fbfaf7", "#1d211f"),
     "foreground": ("#30332e", "#e0e5df"),
     "focus_outline": ("#57735d", "#9abb9e"),
+    "branch_row": ("#f3ead9", "#393327"),
     "selected_row": ("#e8ede5", "#38443a"),
     "focused_row": ("#dbe8db", "#405744"),
     "selection_edge": ("#52715b", "#9cbc9f"),
@@ -86,6 +87,9 @@ CSS = """
 .branchxml .bx-tree cell,
 .branchxml entry {
   outline-color: $focus_outline;
+}
+.branchxml .bx-tree row:not(:selected) .bx-branch:not(.bx-drop-inside) {
+  background-color: $branch_row;
 }
 .branchxml .bx-tree row:selected {
   background: $selected_row;
@@ -168,6 +172,10 @@ CSS = """
 }
 .branchxml .bx-tree .bx-name-cell {
   padding-left: 2px;
+}
+.branchxml .bx-tree .bx-value-cell {
+  padding-left: 11px;
+  padding-right: 11px;
 }
 .branchxml .bx-tree .bx-row-mark {
   font-size: 10px;
@@ -401,6 +409,7 @@ def name_cell():
 
 
 def bind_tree_row(expander, row):
+    expander.set_css_classes(["bx-branch"] if row.is_expandable() else [])
     expander.set_list_row(row)
     # GTK lays out one indent per ancestor, then a toggle or a spacer for the node.
     slot = expander.get_child().get_prev_sibling()
@@ -450,3 +459,5 @@ def value_kind(value):
 
 def set_value(label, row):
     label.set_css_classes(["bx-value-cell", "bx-value-" + value_kind(row.value)])
+    if row.children.get_n_items():
+        label.add_css_class("bx-branch")
