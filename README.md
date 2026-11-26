@@ -6,7 +6,7 @@ BranchXML is a tree-based XML editor for Linux. Expand a node on the left and ed
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="docs/screenshots/tree-editing-en.png">
-  <img src="docs/screenshots/edit-recipe-en.gif" alt="BranchXML editing a tea recipe. The steeping time changes from 5 to 8 minutes, Tab moves to the next value, and the diff shows one changed line.">
+  <img src="docs/screenshots/edit-recipe-en.gif" alt="The pointer clicks the second step’s steeping time. After editing 5 to 8 and pressing Tab, the user clicks View → Changes Since Save to see the one-line diff.">
 </picture>
 
 [Try the edit with the sample recipe](docs/guide.md#try-a-one-value-edit)

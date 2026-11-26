@@ -6,7 +6,7 @@ BranchXML 是一款适用于 Linux 的树形 XML 编辑器。左边展开节点�
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="docs/screenshots/tree-editing.png">
-  <img src="docs/screenshots/edit-recipe-zh-CN.gif" alt="在 BranchXML 里把泡茶时间从 5 分钟改成 8 分钟，按 Tab 进入下一项，再打开对比窗口，看到只有时长所在的那一行发生了变化。">
+  <img src="docs/screenshots/edit-recipe-zh-CN.gif" alt="鼠标点中第二个步骤的泡茶时长。把 5 改为 8，按 Tab 进入下一项，再点「视图 → 查看未保存的改动」，就能看到只有时长这一行变了。">
 </picture>
 
 [用示例配方跟着改一次](docs/guide.zh-CN.md#试一次只改一个值)
