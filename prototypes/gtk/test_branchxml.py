@@ -225,8 +225,15 @@ class InputTest(unittest.TestCase):
             self.assertEqual(view.get_item_attribute_value(last, "label", None).get_string(), "语言")
             languages = view.get_item_link(last, Gio.MENU_LINK_SUBMENU)
             self.assertEqual(languages.get_item_attribute_value(0, "label", None).get_string(), "跟随系统")
-            self.assertEqual(win.node_menu.get_menu_model().get_item_attribute_value(0, "label", None)
-                             .get_string().split()[0], "新增同级节点")
+            menu = win.node_menu.get_menu_model()
+            labels = {
+                menu.get_item_attribute_value(i, "action", None).get_string():
+                menu.get_item_attribute_value(i, "label", None).get_string().split()[0]
+                for i in range(menu.get_n_items())
+            }
+            self.assertEqual(labels["win.expand-subtree"], "展开整个子树")
+            self.assertEqual(labels["win.collapse-subtree"], "收起整个子树")
+            self.assertEqual(labels["win.sibling"], "新增同级节点")
             self.assertEqual(win.entry.get_text(), "茶 & water")
             self.assertEqual(win.active.value, "File")
             self.assertFalse(win.document.dirty)
@@ -592,6 +599,50 @@ class InputTest(unittest.TestCase):
             self.assertFalse(win.lookup_action("move-down").get_enabled())
             win.lookup_action("move-up").activate(None)
             self.assertEqual(win.document.render(), b"<r><task n='2'/><task n='1'/></r>")
+            self.assertEqual(path.read_bytes(), original)
+
+    def test_context_menu_expands_and_collapses_entire_subtree(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            original = b"<r><task><params><param key='x'/></params></task><other><leaf/></other></r>"
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            root = win.rows.get_child_row(0)
+            task, other = root.get_child_row(0), root.get_child_row(1)
+            expand = win.lookup_action("expand-subtree")
+            collapse = win.lookup_action("collapse-subtree")
+
+            # Closing a single row leaves remembered descendants beneath it.
+            task.get_child_row(0).set_expanded(False)
+            other.set_expanded(False)
+            win.selection.set_selected(task.get_position())
+            self.assertTrue(expand.get_enabled() and collapse.get_enabled())
+            expand.activate(None)
+            params = task.get_child_row(0)
+            self.assertTrue(params.get_expanded() and params.get_child_row(0).get_expanded())
+            self.assertFalse(other.get_expanded())
+
+            task.set_expanded(False)
+            collapse.activate(None)
+            task.set_expanded(True)
+            params = task.get_child_row(0)
+            self.assertFalse(params.get_expanded())
+            params.set_expanded(True)
+            self.assertFalse(params.get_child_row(0).get_expanded())
+
+            win.selection.set_selected(root.get_position())
+            collapse.activate(None)
+            self.assertEqual(win.rows.get_n_items(), 1)
+            expand.activate(None)
+            expand.activate(None)
+            self.assertEqual(win.rows.get_n_items(), 7)
+            self.assertTrue(all(row.get_expanded() for row in win.rows if row.is_expandable()))
+            win.selection.set_selected(win.rows.get_n_items() - 1)
+            self.assertFalse(expand.get_enabled() or collapse.get_enabled())
+            self.assertFalse(win.document.undo_stack)
+            self.assertFalse(win.document.dirty)
+            self.assertEqual(win.document.render(), original)
             self.assertEqual(path.read_bytes(), original)
 
     def test_tab_cancel_and_recycled_rows(self):

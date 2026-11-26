@@ -23,6 +23,8 @@ Close the comparison and press **Ctrl+Z**. Saving now restores the working copy 
 
 Follow the branch lines to see which nodes share a parent. Click **+** to expand a branch and **−** to collapse it. The row stays under the pointer, even at the end of the document. Reopening a parent restores each descendant’s previous expansion state.
 
+To open or close every level at once, right-click either column and choose **Expand Subtree** or **Collapse Subtree**. Use it on the root to act on the whole tree. After **Collapse Subtree**, opening the node with **+** shows just its immediate children.
+
 Right-click a node to duplicate, move or delete it with its children, or drag an element to another parent. Icons and colors distinguish node types.
 
 ### Keyboard shortcuts and node commands

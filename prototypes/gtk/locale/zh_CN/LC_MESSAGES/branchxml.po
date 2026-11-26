@@ -102,6 +102,12 @@ msgstr "新增子元素"
 msgid "Add Attribute"
 msgstr "新增属性"
 
+msgid "Expand Subtree"
+msgstr "展开整个子树"
+
+msgid "Collapse Subtree"
+msgstr "收起整个子树"
+
 msgid "Duplicate Node"
 msgstr "复制节点"
 

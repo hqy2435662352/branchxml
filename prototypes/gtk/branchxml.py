@@ -28,6 +28,7 @@ from xml_tools import load_schema, schema_issues
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
 PAGE_HINTS = ("Right-click a node for actions", "Ctrl+F Find  ·  F3 Next  ·  Shift+F3 Previous")
 NODE_COMMANDS = (
+    ("expand-subtree", "Expand Subtree", ""), ("collapse-subtree", "Collapse Subtree", ""),
     ("sibling", "Add Sibling", "Insert"), ("child", "Add Child Element", "Ctrl+Insert"),
     ("attribute", "Add Attribute", "Alt+Insert"), ("duplicate", "Duplicate Node", "Ctrl+D"),
     ("rename", "Rename Node", "Shift+F2"), ("multiline", "Edit Multiline Value…", "Shift+Enter"),
@@ -450,6 +451,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.rows = Gtk.TreeListModel.new(self.document.roots, False, False,
                                           lambda row: row.children if row.children.get_n_items() else None)
         self.watched_branches = set()
+        self.expanding_subtree = False
         self.selection = Gtk.SingleSelection.new(self.rows)
         self.view.set_model(self.selection)
         self.selection.connect("notify::selected-item", lambda *_: self.update_node_actions())
@@ -483,6 +485,29 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.watch_branches(branch, row.children)
         else:
             self.expanded.discard(key)
+        if not self.expanding_subtree:
+            self.keep_branch_position(branch)
+
+    def set_subtree_expanded(self, branch, expanded):
+        if not expanded:
+            # Also forget open descendants concealed by an already closed parent.
+            path = branch.get_item().path
+            self.expanded.difference_update({key for key in self.expanded if key[0][:len(path)] == path})
+            branch.set_expanded(False)
+            return
+
+        # Anchor the clicked row once, after all descendant rows have been revealed.
+        self.expanding_subtree = True
+        try:
+            pending = [branch]
+            while pending:
+                current = pending.pop()
+                current.set_expanded(True)
+                for index, child in enumerate(current.get_item().children):
+                    if child.children.get_n_items():
+                        pending.append(current.get_child_row(index))
+        finally:
+            self.expanding_subtree = False
         self.keep_branch_position(branch)
 
     def row_widget(self, branch):
@@ -566,7 +591,9 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.inspector.select_node(item)
         for name, _, _ in NODE_COMMANDS:
             enabled = row is not None
-            if enabled and name in ("move-up", "move-down"):
+            if enabled and name in ("expand-subtree", "collapse-subtree"):
+                enabled = item.is_expandable()
+            elif enabled and name in ("move-up", "move-down"):
                 enabled = move_neighbor(self.rows.get_model(), row, name) is not None
             elif enabled and name in ("child", "attribute", "content"):
                 enabled = row.element
@@ -603,7 +630,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def node_command(self, operation):
         self.finish(True)
-        row = self.selection.get_selected_item().get_item()
+        item = self.selection.get_selected_item()
+        if operation in ("expand-subtree", "collapse-subtree"):
+            self.set_subtree_expanded(item, operation == "expand-subtree")
+            return
+        row = item.get_item()
         if operation == "locate-source":
             self.corresponding_node()
             return
