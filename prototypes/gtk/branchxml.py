@@ -20,6 +20,7 @@ from inspector import Inspector
 from source_view import SourcePage
 
 
+APP_ID = "io.github.branchxml.InputPrototype"
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
 PAGE_HINTS = ("Right-click a node for actions", "Ctrl+F Find  ·  F3 Next  ·  Shift+F3 Previous")
 NODE_COMMANDS = (
@@ -47,10 +48,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.set_default_size(920, 690)
         self.add_css_class("branchxml")
         appearance.install(self.get_display())
+        self.set_icon_name(APP_ID)
         titlebar = Gtk.HeaderBar()
         titlebar.add_css_class("bx-title")
         titlebar.set_title_widget(Gtk.Box())
-        titlebar.pack_start(Gtk.Image.new_from_icon_name("application-xml"))
+        titlebar.pack_start(Gtk.Image.new_from_icon_name(APP_ID))
         caption = Gtk.Label(ellipsize=Pango.EllipsizeMode.MIDDLE, xalign=0)
         self.bind_property("title", caption, "label")
         titlebar.pack_start(caption)
@@ -813,8 +815,7 @@ def main():
         document = Document(path)
     except FILE_ERRORS as error:
         parser.exit(1, f"{path}: {error_text(error)}\n")
-    app = Gtk.Application(application_id="io.github.branchxml.InputPrototype",
-                          flags=Gio.ApplicationFlags.NON_UNIQUE)
+    app = Gtk.Application(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
     app.connect("activate", lambda app: RecipeWindow(app, document).present())
     return app.run([])
 

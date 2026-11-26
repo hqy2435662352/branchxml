@@ -1,6 +1,7 @@
 """Compact, light XML tree styling for the GTK prototype."""
 
 import re
+from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -226,6 +227,7 @@ VALUE_NUMBER = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+
 def install(display):
     if display in _PROVIDERS:
         return
+    Gtk.IconTheme.get_for_display(display).add_search_path(str(Path(__file__).resolve().with_name("icons")))
     provider = Gtk.CssProvider()
     provider.load_from_data(CSS.encode())
     Gtk.StyleContext.add_provider_for_display(
