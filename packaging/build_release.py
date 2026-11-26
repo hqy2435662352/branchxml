@@ -18,10 +18,12 @@ from app_info import VERSION
 
 def sources():
     yield from (ROOT / name for name in ("install.py", "LICENSE", "README.md", "README.zh-CN.md",
-                                          "CHANGELOG.md", "examples/demo.xml", "packaging/branchxml.sh",
+                                          "CHANGELOG.md", "docs/guide.md", "docs/guide.zh-CN.md",
+                                          "examples/demo.xml", "packaging/branchxml.sh",
                                           "packaging/branchxml.desktop.in", "packaging/build_release.py",
                                           "packaging/test-wayland.sh", "packaging/smoke_desktop.py"))
     yield from sorted((ROOT / "docs/screenshots").glob("*.png"))
+    yield from sorted((ROOT / "docs/screenshots").glob("*.gif"))
     yield from (GTK / (name + ".py") for name in MODULES)
     yield from sorted(GTK.glob("test_*.py"))
     yield GTK / ICON
