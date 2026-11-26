@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import re
 from pathlib import Path
 from xml.parsers import expat
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, quoteattr
 
 from gi.repository import Gio, GObject
 
@@ -28,14 +28,18 @@ def error_text(error):
 
 
 class XmlRow(GObject.Object):
-    def __init__(self, name, value=None, span=None):
+    def __init__(self, name, value=None, span=None, element=False):
         super().__init__()
         self.name = name
         self.value = self.original = value
         self.span = span
         self.bounds = span[:2] if span else None
-        self.element = False
-        self.children = Gio.ListStore.new(XmlRow)
+        self.element = element
+        self.children = Gio.ListStore.new(XmlRow) if element else EMPTY_CHILDREN
+
+
+# Only elements can acquire children while a document is being parsed.
+EMPTY_CHILDREN = Gio.ListStore.new(XmlRow)
 
 
 def validate(data):
@@ -61,6 +65,7 @@ def validate(data):
 
 
 ATTRIBUTE = re.compile(rb"""\s+[^\s=]+\s*=\s*(["'])(.*?)\1""", re.S)
+CLIPBOARD_ATTRIBUTE = re.compile(r"""^\s*[^\s<>&/'"=?!]+\s*=\s*['"]""")
 
 
 def parse_rows(source):
@@ -94,8 +99,7 @@ def parse_rows(source):
 
     def start(name, attrs):
         flush()
-        row = XmlRow(name)
-        row.element = True
+        row = XmlRow(name, element=True)
         row.open_start = parser.CurrentByteIndex
         append(row)
         stack.append(row)
@@ -215,6 +219,19 @@ def row_at_offset(roots, offset):
     return found
 
 
+def walk_rows(roots):
+    """All rows in document order, independent of which branches are open."""
+    pending = [iter(roots)]
+    while pending:
+        row = next(pending[-1], None)
+        if row is None:
+            pending.pop()
+            continue
+        yield row
+        if row.children.get_n_items():
+            pending.append(iter(row.children))
+
+
 @dataclass
 class TreeChange:
     before: tuple
@@ -252,6 +269,107 @@ def move_neighbor(roots, row, operation):
     return None
 
 
+def namespaces(roots, path):
+    bindings = {}
+    for depth in range(1, len(path) + 1):
+        for attr in row_at(roots, path[:depth]).children:
+            if attr.name == "@xmlns" or attr.name.startswith("@xmlns:"):
+                bindings[attr.name[1:]] = attr.value
+    return bindings
+
+
+def pasted_attributes(xml, roots, owner, fragment):
+    wrapped = b"<clip " + fragment + b"/>"
+    clip = parse_rows(wrapped).get_item(0)
+    if clip.bounds != (0, len(wrapped)) or clip.empty_span[2] != "empty":
+        raise DocumentError("Paste an attribute or a balanced XML fragment.")
+    scope = namespaces(roots, owner.path)
+    pieces = []
+    for attr in clip.children:
+        name = attr.name[1:]
+        if name in scope:
+            if scope[name] != attr.value:
+                raise DocumentError("The namespace {name} already has a different binding here.", name=name)
+            continue
+        start, end = attr.bounds
+        pieces.append(wrapped[start:end])
+    if not pieces:
+        raise DocumentError("The selected element already has these namespace declarations.")
+    pos = owner.open_start + 1 + len(owner.name.encode())
+    for attr in owner.children:
+        if not attr.name.startswith("@"):
+            break
+        pos = attr.bounds[1]
+    return pos, pos, b" " + b" ".join(pieces), pos + 1
+
+
+def clipboard_fragment(text, default_namespace):
+    data = re.sub(rb"^(?:\xef\xbb\xbf)?<\?xml\s+[^?]*\?>[\r\n]*", b"", text.encode(), count=1)
+    if not data:
+        raise DocumentError("The clipboard is empty.")
+    prefix = b"<clip>"
+    try:
+        wrapped = parse_rows(prefix + data + b"</clip>").get_item(0)
+    except expat.ExpatError:
+        if b"<" in data:
+            raise
+        return escape(text).encode()
+    if default_namespace:
+        # An unqualified subtree copied from a document with no default namespace
+        # must keep those expanded names in a default-namespaced destination.
+        for child in reversed(list(wrapped.children)):
+            if child.element and not any(a.name == "@xmlns" for a in child.children):
+                pos = child.open_start - len(prefix) + len(child.name.encode()) + 1
+                data = data[:pos] + b' xmlns=""' + data[pos:]
+    return data
+
+
+def content_xml(kind, value, target=""):
+    if kind == "text":
+        if not value:
+            raise DocumentError("Enter some text to add.")
+        return escape(value)
+    if kind == "cdata":
+        return "<![CDATA[" + value.replace("]]>", "]]]]><![CDATA[>") + "]]>"
+    if kind == "comment":
+        if "--" in value or value.endswith("-"):
+            raise DocumentError("An XML comment cannot contain -- or end with -.")
+        return "<!--" + value + "-->"
+    if kind == "pi":
+        if not re.fullmatch(r"""[^\s<>&/'"=?!]+""", target):
+            raise DocumentError("Enter a valid XML name.")
+        if "?>" in value:
+            raise DocumentError("An XML processing instruction cannot contain ?>.")
+        return "<?" + target + (" " + value if value else "") + "?>"
+    raise DocumentError("Unknown node operation.")
+
+
+def element_fragment(xml, roots, row, destination):
+    start, end = row.bounds
+    inherited = namespaces(roots, row.path[:-1])
+    if destination.get("xmlns"):
+        inherited.setdefault("xmlns", "")
+    local = {attr.name[1:] for attr in row.children if attr.name.startswith("@")}
+    bindings = "".join(" " + key + "=" + quoteattr(value) for key, value in inherited.items()
+                       if key not in local and destination.get(key) != value).encode()
+    pos = start + len(row.name.encode()) + 1
+    return xml[start:pos] + bindings + xml[pos:end]
+
+
+def append_child(xml, roots, row, fragment, indent=True):
+    pos = row.close_start
+    if row.empty_span[2] == "empty":
+        return pos, row.bounds[1], b">" + fragment + b"</" + row.name.encode() + b">", pos + 1
+    padding = b""
+    if indent:
+        last = next((c for c in reversed(list(row.children)) if not c.name.startswith("@")), None)
+        if last:
+            padding = line_indent(xml, last, row, roots)
+            if padding:
+                pos = last.bounds[1]
+    return pos, pos, padding + fragment, pos + len(padding)
+
+
 def node_splice(xml, roots, row, operation, name):
     """Return the range, replacement bytes and selection offset in the result."""
     start, end = row.bounds
@@ -272,12 +390,40 @@ def node_splice(xml, roots, row, operation, name):
     attr = row.name.startswith("@")
     if operation in ("duplicate", "sibling", "delete") and row.element and parent is None:
         raise DocumentError("The document must keep one root element. Select a child or add a child to the root.")
-    if operation in ("child", "attribute") and not row.element:
+    if operation in ("child", "attribute", "content") and not row.element:
         raise DocumentError("Select the element to add content to.")
-    if operation in ("sibling", "child", "attribute"):
+    if operation in ("sibling", "child", "attribute", "rename"):
         if not re.fullmatch(r"""[^\s<>&/'"=?!]+""", name):
             raise DocumentError("Enter a valid XML name.")
         tag = name.encode()
+
+    if operation == "rename":
+        if attr:
+            return start, start + len(row.name[1:].encode()), tag, start
+        if not row.element:
+            raise DocumentError("Select an element or attribute to rename.")
+        old_length = len(row.name.encode())
+        if row.empty_span[2] == "empty":
+            return start + 1, start + 1 + old_length, tag, start
+        close_name = row.close_start + 2
+        middle = xml[start + 1 + old_length:close_name]
+        return start + 1, close_name + old_length, tag + middle + tag, start
+
+    if operation in ("paste", "paste-after"):
+        owner = row if row.element else parent
+        if CLIPBOARD_ATTRIBUTE.match(name):
+            if owner is None:
+                raise DocumentError("Select the element to add content to.")
+            return pasted_attributes(xml, roots, owner, name.strip().encode())
+        as_child = operation == "paste" and row.element
+        if attr:
+            row, as_child = parent, True
+            start, end = row.bounds
+        scope = namespaces(roots, row.path if as_child else row.path[:-1])
+        fragment = clipboard_fragment(name, scope.get("xmlns"))
+        if not as_child:
+            padding = line_indent(xml, row, parent, roots)
+            return end, end, padding + fragment, end + len(padding)
 
     if attr and operation in ("sibling", "duplicate", "delete"):
         sep = start
@@ -309,18 +455,14 @@ def node_splice(xml, roots, row, operation, name):
         # A top-level comment or processing instruction can precede the root element.
         selection = parent.bounds[0] if parent else 0
         return start - len(padding), end, b"", selection
-    if operation == "child":
-        child_xml = b"<" + tag + b"/>"
-        pos = row.close_start
-        if row.empty_span[2] == "empty":
-            return pos, end, b">" + child_xml + b"</" + row.name.encode() + b">", pos + 1
-        content = [c for c in row.children if not c.name.startswith("@")]
-        padding = b""
-        if content:
-            padding = line_indent(xml, content[-1], row, roots)
-            if padding:
-                pos = content[-1].bounds[1]
-        return pos, pos, padding + child_xml, pos + len(padding)
+    if operation in ("child", "content", "paste", "paste-after"):
+        if operation == "child":
+            child_xml = b"<" + tag + b"/>"
+        elif operation == "content":
+            child_xml = content_xml(*name).encode()
+        else:
+            child_xml = fragment
+        return append_child(xml, roots, row, child_xml, indent=operation != "content")
     if operation in ("duplicate", "sibling"):
         padding = line_indent(xml, row, parent, roots)
         fragment = xml[start:end] if operation == "duplicate" else b"<" + tag + b"/>"
@@ -329,9 +471,12 @@ def node_splice(xml, roots, row, operation, name):
 
 
 class Document:
-    def __init__(self, path):
-        self.path = Path(path)
-        _, self.disk_bytes, _ = Gio.File.new_for_path(str(path)).load_contents(None)
+    def __init__(self, path=None):
+        self.path = Path(path) if path is not None else None
+        if self.path is None:
+            self.disk_bytes = b'<?xml version="1.0" encoding="UTF-8"?>\n<root/>\n'
+        else:
+            _, self.disk_bytes, _ = Gio.File.new_for_path(str(path)).load_contents(None)
         self.encoding = validate(self.disk_bytes)
         decoded = self.disk_bytes.decode(self.encoding)
         if decoded.encode(self.encoding) != self.disk_bytes:
@@ -344,11 +489,16 @@ class Document:
         self.redo_stack = []
 
     def edit(self, row, value):
-        if row.value == value:
-            return
-        self.undo_stack.append((row.path, row.value, value))
-        self.redo_stack.clear()
-        self._set_value(row, value)
+        self.edit_values([(row, value)])
+
+    def edit_values(self, updates):
+        changes = [(row, row.value, value) for row, value in updates if row.value != value]
+        if changes:
+            self.undo_stack.append([(row.path, before, after) for row, before, after in changes])
+            self.redo_stack.clear()
+            for row, before, after in changes:
+                self._set_value(row, after)
+        return len(changes)
 
     def step_history(self, redo):
         source, target = (self.redo_stack, self.undo_stack) if redo else (self.undo_stack, self.redo_stack)
@@ -363,9 +513,9 @@ class Document:
                 self._set_value(row_at(self.roots, path), value)
             row = row_at(self.roots, selection)
         else:
-            path, before, after = change
-            row = row_at(self.roots, path)
-            self._set_value(row, after if redo else before)
+            for path, before, after in change:
+                self._set_value(row_at(self.roots, path), after if redo else before)
+            row = row_at(self.roots, change[0][0])
         target.append(change)
         return row
 
@@ -385,9 +535,7 @@ class Document:
         except ValueError:
             return True
 
-    def structure(self, row, operation, name=""):
-        edits = [(r.path, r.value) for r in self.modified]
-        before = self.source, edits, row.path
+    def current_node(self, row):
         xml = self.xml_bytes()
         roots = self.roots
         if self.modified:
@@ -399,11 +547,91 @@ class Document:
             if current is None or current.bounds[0] != offset or current.name != row.name:
                 raise DocumentError("This value has been merged or removed. Select its parent element.")
             row = current
+        return xml, roots, row
+
+    def copy_node(self, row):
+        xml, roots, row = self.current_node(row)
+        start, end = row.bounds
+        fragment = xml[start:end]
+        if row.element:
+            fragment = element_fragment(xml, roots, row, {})
+        elif row.name.startswith("@") and ":" in row.name and not row.name.startswith("@xmlns:"):
+            inherited = namespaces(roots, row.path[:-1])
+            key = "xmlns:" + row.name[1:].split(":", 1)[0]
+            if key in inherited:
+                fragment = (key + "=" + quoteattr(inherited[key]) + " ").encode() + fragment
+        fragment = fragment.decode()
+        if row.name == "#text" and CLIPBOARD_ATTRIBUTE.match(fragment):
+            # A character reference keeps assignment-shaped text distinct from an attribute on paste.
+            return f"&#{ord(fragment[0])};" + fragment[1:]
+        return fragment
+
+    def row_at_source_position(self, offset):
+        # Source view offsets include pending replacements. Map gaps back into
+        # the original byte stream and hits inside a replacement to its editor row.
+        delta = 0
+        for row in sorted(self.modified, key=lambda item: item.span[:2]):
+            start, end, _ = row.span
+            if offset < start + delta:
+                break
+            length = len(replacement(row).encode())
+            if offset < start + delta + length:
+                return row
+            delta += length - (end - start)
+        return row_at_offset(self.roots, offset - delta)
+
+    def structure(self, row, operation, name=""):
+        if operation == "rename" and name == row.name.removeprefix("@") and (row.element or row.name.startswith("@")):
+            return row
+        old_path = row.path
+        xml, roots, row = self.current_node(row)
         start, end, fragment, offset = node_splice(xml, roots, row, operation, name)
         updated = xml[:start] + fragment + xml[end:]
+        return self.apply_structure(updated, offset, old_path)
+
+    def move_element(self, source, target, position):
+        if position not in ("before", "inside", "after") or not source.element or not target.element:
+            raise DocumentError("Choose two elements to move a subtree.")
+        if len(source.path) == 1 or (len(target.path) == 1 and position != "inside"):
+            raise DocumentError("The document must keep one root element. Select a child or add a child to the root.")
+        if target.path[:len(source.path)] == source.path:
+            raise DocumentError("An element cannot be moved inside itself.")
+        old_path = source.path
+        parent_path = target.path if position == "inside" else target.path[:-1]
+        if source.path[:-1] == parent_path:
+            if ((position == "inside" and source.path[-1] == target.children.get_n_items() - 1)
+                or (position == "before" and source.path[-1] + 1 == target.path[-1])
+                or (position == "after" and source.path[-1] - 1 == target.path[-1])):
+                return source
+        xml, roots, source = self.current_node(source)
+        _, _, target = self.current_node(target)
+        dest_scope = namespaces(roots, target.path if position == "inside" else target.path[:-1])
+        fragment = element_fragment(xml, roots, source, dest_scope)
+        start, end, _, _ = node_splice(xml, roots, source, "delete", "")
+        cut = xml[:start] + xml[end:]
+        offset = target.bounds[0]
+        if end <= offset:
+            offset -= end - start
+        cut_roots = parse_rows(cut)
+        target = row_at_offset(cut_roots, offset)
+        if position == "inside":
+            start, end, fragment, selected = append_child(cut, cut_roots, target, fragment)
+        else:
+            padding = line_indent(cut, target, row_at(cut_roots, target.path[:-1]), cut_roots)
+            if position == "before":
+                start = end = selected = target.bounds[0]
+                fragment += padding
+            else:
+                start = end = target.bounds[1]
+                selected = start + len(padding)
+                fragment = padding + fragment
+        return self.apply_structure(cut[:start] + fragment + cut[end:], selected, old_path)
+
+    def apply_structure(self, updated, offset, old_path):
         validate(updated.decode().encode(self.encoding))
         roots = parse_rows(updated)
         selected = row_at_offset(roots, offset) or roots.get_item(0)
+        before = self.source, [(r.path, r.value) for r in self.modified], old_path
         self.undo_stack.append(TreeChange(before, (updated, (), selected.path)))
         self.redo_stack.clear()
         self.source, self.roots = updated, roots
@@ -430,7 +658,7 @@ class Document:
     def save(self, path):
         path = Path(path)
         target = Gio.File.new_for_path(str(path))
-        same = path.resolve() == self.path.resolve()
+        same = self.path is not None and path.resolve() == self.path.resolve()
         etag = None
         if same:
             _, current, etag = target.load_contents(None)

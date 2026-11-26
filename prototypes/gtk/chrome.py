@@ -16,6 +16,11 @@ class Chrome(Gtk.Box):
                 ("undo", lambda: window.history(False)), ("redo", lambda: window.history(True)),
                 ("address", self.focus_address), ("check", window.check_xml),
                 ("find-source", window.find_source),
+                ("find", window.find), ("replace", lambda: window.find(replacing=True)),
+                ("xpath", lambda: window.find(xpath=True)), ("schema", window.choose_schema),
+                ("locate", window.corresponding_node),
+                ("changes", window.compare), ("compare", window.choose_comparison),
+                ("clear-schema", window.remove_schema),
                 ("tree", lambda: window.pages.set_current_page(0)),
                 ("source", lambda: window.pages.set_current_page(1)),
                 ("inspector", lambda: window.inspector.set_visible(not window.inspector.get_visible()))):
@@ -23,7 +28,9 @@ class Chrome(Gtk.Box):
             action.connect("activate", lambda *_, run=callback: run())
             window.add_action(action)
         app.set_accels_for_action("win.address", ["<Control>l"])
-        app.set_accels_for_action("win.find-source", ["<Control>f"])
+        app.set_accels_for_action("win.find", ["<Control>f", "<Control>i"])
+        app.set_accels_for_action("win.replace", ["<Control>h"])
+        app.set_accels_for_action("win.locate", ["<Control>j"])
 
         self.menu_bar = Gtk.PopoverMenuBar.new_from_model(Gio.Menu())
         self.append(self.menu_bar)
@@ -52,10 +59,16 @@ class Chrome(Gtk.Box):
     def translate_ui(self):
         bar = Gio.Menu()
         for title, commands in (
-                ("File", (("Open…", "open"), ("Save", "save"), ("Save As…", "save-as"))),
-                ("Edit", (("Undo", "undo"), ("Redo", "redo"), ("Find in XML Source…", "find-source"))),
-                ("View", (("Tree View", "tree"), ("XML Source", "source"), ("Go to File Path", "address"),
-                          ("Show or Hide Inspector", "inspector"), ("Check XML", "check")))):
+                ("File", (("New", "new"), ("Open…", "open"), ("Save", "save"), ("Save As…", "save-as"),
+                          ("Close", "close"))),
+                ("Edit", (("Undo", "undo"), ("Redo", "redo"), ("Find…", "find"),
+                          ("Replace Values…", "replace"), ("Find by XPath…", "xpath"),
+                          ("Find in XML Source…", "find-source"))),
+                ("View", (("Tree View", "tree"), ("XML Source", "source"), ("Locate in Other View", "locate"),
+                          ("Go to File Path", "address"),
+                          ("Show or Hide Inspector", "inspector"), ("Check XML", "check"),
+                          ("Validate with XML Schema…", "schema"), ("Remove Schema", "clear-schema"),
+                          ("Changes Since Save", "changes"), ("Compare with XML File…", "compare")))):
             menu = Gio.Menu()
             for label, name in commands:
                 menu.append(tr(label), "win." + name)
@@ -74,7 +87,8 @@ class Chrome(Gtk.Box):
         self.address.update_property([Gtk.AccessibleProperty.LABEL], [tr("File path")])
 
     def sync_path(self):
-        self.address.set_text(str(self.window.document.path.absolute()))
+        path = self.window.document.path
+        self.address.set_text(str(path.absolute()) if path else "")
 
     def focus_address(self):
         self.address.grab_focus()
@@ -87,6 +101,7 @@ class Chrome(Gtk.Box):
             self.window.show_error("Could not open the file", error)
             return
         if not path.is_absolute():
-            path = self.window.document.path.absolute().parent / path
+            current = self.window.document.path
+            path = (current.absolute().parent if current else Path.cwd()) / path
         self.sync_path()
         self.window.confirm_changes(lambda: self.window.open_path(path))

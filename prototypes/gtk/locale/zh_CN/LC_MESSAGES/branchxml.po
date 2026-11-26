@@ -458,3 +458,189 @@ msgstr "DTD 和实体展开超过输入放大限制"
 
 msgid "parser not started"
 msgstr "解析器尚未启动"
+
+msgid "New"
+msgstr "新建"
+
+msgid "New document"
+msgstr "新文档"
+
+msgid "Untitled.xml"
+msgstr "未命名.xml"
+
+msgid "Find…"
+msgstr "查找…"
+
+msgid "Replace Values…"
+msgstr "替换值…"
+
+msgid "Find node names and values"
+msgstr "查找节点名称和值"
+
+msgid "Replacement value"
+msgstr "替换为"
+
+msgid "Replace in Value"
+msgstr "替换当前值"
+
+msgid "Replace All Values"
+msgstr "替换全部值"
+
+msgid "Changed {count} values"
+msgstr "已修改 {count} 个值"
+
+msgid "Rename Node"
+msgstr "重命名节点"
+
+msgid "Rename"
+msgstr "重命名"
+
+msgid "Edit Multiline Value…"
+msgstr "编辑多行值…"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Cut Node"
+msgstr "剪切节点"
+
+msgid "Copy Node"
+msgstr "复制节点"
+
+msgid "Paste"
+msgstr "粘贴"
+
+msgid "Paste After"
+msgstr "粘贴到后面"
+
+msgid "Could not copy the node"
+msgstr "无法复制节点"
+
+msgid "Could not paste the node"
+msgstr "无法粘贴节点"
+
+msgid "Paste an attribute or a balanced XML fragment."
+msgstr "请粘贴属性或结构完整的 XML 片段。"
+
+msgid "The namespace {name} already has a different binding here."
+msgstr "此位置的命名空间 {name} 已绑定到另一个地址。"
+
+msgid "The selected element already has these namespace declarations."
+msgstr "所选元素已包含这些命名空间声明。"
+
+msgid "The clipboard is empty."
+msgstr "剪贴板为空。"
+
+msgid "Select an element or attribute to rename."
+msgstr "请选择需要重命名的元素或属性。"
+
+msgid "Add Text, Comment or Instruction…"
+msgstr "新增文本、注释或处理指令…"
+
+msgid "Add Content"
+msgstr "新增内容"
+
+msgid "Text"
+msgstr "文本"
+
+msgid "Comment"
+msgstr "注释"
+
+msgid "Processing Instruction"
+msgstr "处理指令"
+
+msgid "Node type"
+msgstr "节点类型"
+
+msgid "Instruction target"
+msgstr "处理指令名称"
+
+msgid "Enter some text to add."
+msgstr "请输入要添加的文本。"
+
+msgid "Find by XPath…"
+msgstr "使用 XPath 查找…"
+
+msgid "XPath expression · Enter to evaluate"
+msgstr "XPath 表达式 · 按 Enter 查询"
+
+msgid "Optional namespaces · prefix=URI (use default for the default namespace)"
+msgstr "可选命名空间 · 前缀=URI（默认命名空间使用 default）"
+
+msgid "XPath namespaces"
+msgstr "XPath 命名空间"
+
+msgid "Press Enter"
+msgstr "按 Enter 查询"
+
+msgid "Install python3-lxml to use XPath and XML Schema."
+msgstr "使用 XPath 和 XML Schema 需要安装 python3-lxml。"
+
+msgid "Enter namespace bindings as prefix=URI."
+msgstr "请按 前缀=URI 的格式填写命名空间。"
+
+msgid "Schema includes must be local files inside the selected schema folder."
+msgstr "引用的模式文件必须位于所选模式的本地目录中。"
+
+msgid "Select an XML Schema"
+msgstr "选择 XML Schema 文件"
+
+msgid "Could not load the schema"
+msgstr "无法加载模式文件"
+
+msgid "Validate with XML Schema…"
+msgstr "使用 XML Schema 校验…"
+
+msgid "Remove Schema"
+msgstr "移除模式"
+
+msgid "XML matches the schema"
+msgstr "XML 符合模式要求"
+
+msgid "Regex"
+msgstr "正则表达式"
+
+msgid "Match case"
+msgstr "区分大小写"
+
+msgid "Could not replace values"
+msgstr "无法替换值"
+
+msgid "Locate in Other View"
+msgstr "在另一视图中定位"
+
+msgid "Show in XML Source"
+msgstr "在 XML 源码中定位"
+
+msgid "Could not locate the node"
+msgstr "无法定位节点"
+
+msgid "Place the cursor inside an XML node"
+msgstr "请将光标放在一个 XML 节点中"
+
+msgid "Choose two elements to move a subtree."
+msgstr "请选择两个元素以移动子树。"
+
+msgid "An element cannot be moved inside itself."
+msgstr "不能将元素移到其自身或后代中。"
+
+msgid "Files are byte-identical."
+msgstr "两个文件逐字节相同。"
+
+msgid "The text is identical. The file encoding or byte order mark differs."
+msgstr "文本相同，文件编码或字节序标记不同。"
+
+msgid "Compare XML"
+msgstr "比较 XML"
+
+msgid "Last saved"
+msgstr "上次保存"
+
+msgid "Could not compare XML"
+msgstr "无法比较 XML"
+
+msgid "Changes Since Save"
+msgstr "查看未保存的改动"
+
+msgid "Compare with XML File…"
+msgstr "与另一个 XML 文件比较…"

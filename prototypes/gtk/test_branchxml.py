@@ -28,6 +28,176 @@ class InputTest(unittest.TestCase):
         cls.app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
         cls.app.register(None)
 
+    def test_find_hidden_values_replace_undo_and_multiline(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "recipe.xml"
+            original = "<r><task><summary>终点 LM2</summary><param value='LM2'/></task><other><v/></other></r>".encode()
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            root = win.rows.get_child_row(0)
+            task, other = root.get_child_row(0), root.get_child_row(1)
+            task.set_expanded(False)
+            other.set_expanded(False)
+            win.lookup_action("find").activate(None)
+            bar = win.tree_find
+            bar.entry.set_text("lm2")
+            self.assertEqual(bar.count.get_text(), "1 / 2")
+            self.assertTrue(task.get_expanded())
+            self.assertFalse(other.get_expanded())
+            bar.key_pressed(None, Gdk.KEY_F3, 0, 0)
+            self.assertEqual(win.selection.get_selected_item().get_item().name, "@value")
+            bar.entry.emit("stop-search")
+            win.navigation_key(None, Gdk.KEY_F2, 0, 0)
+            win.entry.set_text("LM3")
+            win.edit_key(None, Gdk.KEY_Tab, 0, 0)
+            win.history(False)
+            win.lookup_action("replace").activate(None)
+            bar.replacement.set_text("站点")
+            bar.replace_all.emit("clicked")
+            self.assertIn("<summary>终点 站点</summary><param value='站点'/>", win.document.render().decode())
+            win.history(False)
+            self.assertEqual(win.document.render(), original)
+            bar.close()
+            summary = task.get_child_row(0).get_item()
+            win.reveal(summary, focus=True)
+            win.lookup_action("multiline").activate(None)
+            dialog = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.Dialog))
+            text = dialog.get_content_area().get_first_child().get_child()
+            text.get_buffer().set_text("第一行\n第二行")
+            dialog.response(Gtk.ResponseType.CANCEL)
+            self.assertEqual(win.document.render(), original)
+            win.edit_multiline(summary)
+            dialog = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.Dialog))
+            dialog.get_content_area().get_first_child().get_child().get_buffer().set_text("一\n二")
+            dialog.response(Gtk.ResponseType.OK)
+            self.assertIn("一\n二", win.document.render().decode())
+            self.assertFalse(other.get_expanded())
+
+    def test_tree_clipboard_actions_and_unsaved_document(self):
+        with TemporaryDirectory() as temp:
+            win = RecipeWindow(self.app, Document())
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            self.assertEqual(win.chrome.address.get_text(), "")
+            with patch.object(win, "choose_file") as choose:
+                win.lookup_action("save").activate(None)
+                choose.assert_called_once_with(True)
+            root = win.document.roots.get_item(0)
+            win.change_node(root, "child", "sample")
+            win.lookup_action("copy").activate(None)
+            win.reveal(win.document.roots.get_item(0), focus=True)
+            win.lookup_action("paste").activate(None)
+            wait_for(lambda: win.document.roots.get_item(0).children.get_n_items() == 2)
+            win.lookup_action("cut").activate(None)
+            self.assertEqual(win.document.roots.get_item(0).children.get_n_items(), 1)
+            win.history(False)
+            path = Path(temp) / "new file.xml"
+            self.assertTrue(win.save(path))
+            self.assertIn(b"<sample/><sample/>", path.read_bytes())
+            win.lookup_action("new").activate(None)
+            self.assertIsNone(win.document.path)
+
+    def test_close_untitled_only_after_first_save_succeeds(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "新 配方.xml"
+            win = RecipeWindow(self.app, Document())
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            win.document.edit(win.document.roots.get_item(0), "保存内容")
+
+            def respond(dialog, parent, cancellable, callback):
+                callback(dialog, None)
+
+            cancelled = GLib.Error.new_literal(Gtk.DialogError.quark(), "cancel", Gtk.DialogError.DISMISSED)
+            with (patch.object(Gtk.AlertDialog, "choose", respond),
+                  patch.object(Gtk.AlertDialog, "choose_finish", return_value=2),
+                  patch.object(Gtk.FileDialog, "save", respond),
+                  patch.object(Gtk.FileDialog, "save_finish", side_effect=[cancelled, Gio.File.new_for_path(str(path))])):
+                win.lookup_action("close").activate(None)
+                self.assertTrue(win.get_visible() and win.document.dirty)
+                self.assertFalse(path.exists())
+                win.lookup_action("close").activate(None)
+                wait_for(lambda: not win.get_visible())
+                self.assertIn("<root>保存内容</root>", path.read_text())
+
+    def test_xpath_and_schema_diagnostics_use_current_values(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "sample.xml"
+            path.write_text("<r>\n<n>bad</n>\n<n>wrong</n>\n</r>")
+            schema = path.with_suffix(".xsd")
+            schema.write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="r"><xs:complexType><xs:sequence><xs:element name="n" type="xs:int" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>')
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            win.lookup_action("xpath").activate(None)
+            win.tree_find.entry.set_text("//n[2]")
+            win.tree_find.entry.emit("activate")
+            self.assertEqual(win.selection.get_selected_item().get_item().value, "wrong")
+            win.tree_find.close()
+            win.attach_schema(schema)
+            self.assertEqual((win.inspector.first_line, win.inspector.extra_rows), (2, 1))
+            win.inspector.jump.emit("clicked")
+            self.assertEqual(win.pages.get_current_page(), 1)
+            buf = win.source.buffer
+            self.assertEqual(buf.get_iter_at_mark(buf.get_insert()).get_line(), 1)
+            win.pages.set_current_page(0)
+            for index in (1, 2):
+                win.request_edit(index)
+                win.entry.set_text("42")
+                win.leave(True)
+            wait_for(lambda: win.inspector.result[0].get_text() == tr("XML matches the schema"))
+            self.assertEqual(win.inspector.extra_rows, 0)
+            self.assertIn("wrong", path.read_text())
+            win.set_document(Document())
+            self.assertFalse(win.lookup_action("clear-schema").get_enabled())
+
+    def test_regex_and_tree_source_positions_after_unicode_edit(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "图.xml"
+            path.write_bytes("\ufeff<r name='茶'><a id='LM2'/><b>lm34</b></r>\r\n".encode())
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            win.request_edit(1)
+            win.entry.set_text("茶和薄荷")
+            win.leave(True)
+            win.find(replacing=True)
+            bar = win.tree_find
+            bar.regex.set_active(True)
+            bar.case.set_active(True)
+            bar.entry.set_text(r"LM(\d+)")
+            self.assertEqual(len(bar.matches), 1)
+            bar.case.set_active(False)
+            self.assertEqual(len(bar.matches), 2)
+            bar.replacement.set_text(r"站\1")
+            bar.replace(True)
+            self.assertIn(b"<b>" + "站34".encode() + b"</b>", win.document.xml_bytes())
+            win.history(False)
+            bar.entry.set_text("[")
+            self.assertFalse(bar.matches)
+            bar.regex.set_active(False)
+            bar.entry.set_text("LM2")
+            bar.close()
+            attr = win.selection.get_selected_item().get_item()
+            win.lookup_action("locate").activate(None)
+            buf = win.source.buffer
+            self.assertEqual(buf.get_text(*buf.get_selection_bounds(), False), "id='LM2'")
+            pos = win.source.xml.index("LM2") + 1
+            buf.place_cursor(buf.get_iter_at_offset(pos))
+            win.lookup_action("locate").activate(None)
+            self.assertIs(win.selection.get_selected_item().get_item(), attr)
+            win.navigation_key(None, Gdk.KEY_Left, 0, 0)
+            self.assertEqual(win.selection.get_selected_item().get_item().name, "a")
+            win.navigation_key(None, Gdk.KEY_Right, 0, 0)
+            self.assertIs(win.selection.get_selected_item().get_item(), attr)
+
     def test_language_menu_preserves_edits_tree_state_and_search(self):
         with (TemporaryDirectory() as temp,
               patch.object(i18n, "preference_file", return_value=Path(temp) / "config" / "language"),

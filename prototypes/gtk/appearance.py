@@ -11,6 +11,9 @@ from i18n import tr
 
 
 CSS = """
+.branchxml .bx-drop-before { box-shadow: inset 0 2px #2673bb; }
+.branchxml .bx-drop-after { box-shadow: inset 0 -2px #2673bb; }
+.branchxml .bx-drop-inside { background-color: #c5def5; }
 .branchxml {
   background: #ffffff;
   color: #202632;
@@ -227,7 +230,8 @@ VALUE_NUMBER = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+
 def install(display):
     if display in _PROVIDERS:
         return
-    Gtk.IconTheme.get_for_display(display).add_search_path(str(Path(__file__).resolve().with_name("icons")))
+    icons = Path(__file__).resolve().with_name("icons")
+    Gtk.IconTheme.get_for_display(display).add_search_path(str(icons if icons.is_dir() else icons.parent.parent / "icons"))
     provider = Gtk.CssProvider()
     provider.load_from_data(CSS.encode())
     Gtk.StyleContext.add_provider_for_display(

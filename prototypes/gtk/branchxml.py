@@ -2,6 +2,7 @@
 """BranchXML GTK 4 XML editor."""
 
 import argparse
+import codecs
 import sys
 from pathlib import Path
 from xml.parsers.expat import ExpatError
@@ -12,22 +13,30 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 import appearance
+from app_info import APP_ID, VERSION
 import i18n
 from chrome import Chrome
+from comparison import show_comparison
 from document import Document, error_text, move_neighbor
 from i18n import tr
 from inspector import Inspector
 from source_view import SourcePage
+from tree_find import TreeFind
+from xml_tools import load_schema, schema_issues
 
 
-APP_ID = "io.github.branchxml.InputPrototype"
 FILE_ERRORS = (OSError, GLib.Error, ExpatError, ValueError, LookupError)
 PAGE_HINTS = ("Right-click a node for actions", "Ctrl+F Find  ·  F3 Next  ·  Shift+F3 Previous")
 NODE_COMMANDS = (
     ("sibling", "Add Sibling", "Insert"), ("child", "Add Child Element", "Ctrl+Insert"),
     ("attribute", "Add Attribute", "Alt+Insert"), ("duplicate", "Duplicate Node", "Ctrl+D"),
+    ("rename", "Rename Node", "Shift+F2"), ("multiline", "Edit Multiline Value…", "Shift+Enter"),
+    ("content", "Add Text, Comment or Instruction…", ""),
+    ("cut", "Cut Node", "Ctrl+X"), ("copy", "Copy Node", "Ctrl+C"), ("paste", "Paste", "Ctrl+V"),
+    ("paste-after", "Paste After", "Ctrl+Shift+V"),
     ("move-up", "Move Up", "Alt+↑"), ("move-down", "Move Down", "Alt+↓"),
     ("delete", "Delete Node", "Delete"),
+    ("locate-source", "Show in XML Source", ""),
 )
 
 
@@ -37,6 +46,7 @@ def is_editable(row):
 
 def cell_label():
     label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
+    label.set_single_line_mode(True)
     label.set_margin_start(5)
     label.set_margin_end(5)
     return label
@@ -128,9 +138,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
         statusbar.append(self.encoding)
         layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         for name, shortcut, callback in (
+                ("new", "<Control>n", lambda: self.confirm_changes(lambda: self.set_document(Document()))),
                 ("open", "<Control>o", lambda: self.choose_file(False)),
                 ("save", "<Control>s", self.save),
-                ("save-as", "<Control><Shift>s", lambda: self.choose_file(True))):
+                ("save-as", "<Control><Shift>s", lambda: self.choose_file(True)),
+                ("close", "<Control>w", self.close)):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda *_, run=callback: run())
             self.add_action(action)
@@ -154,12 +166,17 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.view.add_controller(context_click)
         self.pages = Gtk.Notebook()
         self.pages.add_css_class("bx-pages")
-        self.pages.append_page(self.overlay, Gtk.Label())
+        self.tree_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.tree_find = TreeFind(self)
+        self.tree_page.append(self.tree_find)
+        self.tree_page.append(self.overlay)
+        self.pages.append_page(self.tree_page, Gtk.Label())
         self.source = SourcePage()
         self.pages.append_page(self.source, Gtk.Label())
         self.pages.connect("switch-page", self.switch_page)
 
-        self.inspector = Inspector(self.check_xml)
+        self.schema_timer = None
+        self.inspector = Inspector(self.check_xml, self.show_line)
         workspace = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
         workspace.add_css_class("bx-workspace")
         workspace.set_start_child(self.pages)
@@ -172,10 +189,22 @@ class RecipeWindow(Gtk.ApplicationWindow):
         layout.append(workspace)
         layout.append(statusbar)
         self.set_child(layout)
+        drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        drop.set_gtypes([Gdk.FileList, Gio.File])
+        drop.connect("drop", self.file_dropped)
+        self.add_controller(drop)
         self.set_document(document)
         self.translate_ui()
         self.view.grab_focus()
         self.connect("close-request", self.close_requested)
+
+    def file_dropped(self, target, item, x, y):
+        files = item.get_files() if isinstance(item, Gdk.FileList) else [item]
+        if len(files) != 1 or not files[0].get_path():
+            return False
+        path = files[0].get_path()
+        self.confirm_changes(lambda: self.open_path(path))
+        return True
 
     def change_language(self, action, value):
         choice = value.get_string()
@@ -194,15 +223,17 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def translate_ui(self):
         self.name_column.set_title(tr("Node"))
         self.value_column.set_title(tr("Value"))
-        self.pages.set_tab_label_text(self.overlay, tr("Tree View"))
+        self.pages.set_tab_label_text(self.tree_page, tr("Tree View"))
         self.pages.set_tab_label_text(self.source, tr("XML Source"))
         self.chrome.translate_ui()
         self.source.translate_ui()
+        self.tree_find.translate_ui()
+        self.update_title()
         self.inspector.translate_ui()
         self.inspector.select_node(self.selection.get_selected_item())
         menu = Gio.Menu()
         for name, title, shortcut in NODE_COMMANDS:
-            menu.append(f"{tr(title)}    {shortcut}", "win." + name)
+            menu.append(f"{tr(title)}    {shortcut}" if shortcut else tr(title), "win." + name)
         self.node_menu.set_menu_model(menu)
         for cell, row in self.name_cells.items():
             appearance.set_name(cell, row)
@@ -221,6 +252,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def set_document(self, document):
         self.finish(False)
         self.document = document
+        self.clear_schema()
+        self.tree_find.reset()
         self.expanded = set()
         self.install_tree()
         self.update_title()
@@ -229,7 +262,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.source.clear_search()
         self.refresh_source()
         self.encoding.set_label(document.encoding.upper())
-        self.set_status("Opened {filename}", PAGE_HINTS[self.pages.get_current_page()], filename=document.path.name)
+        self.set_status("Opened {filename}" if document.path else "New document",
+                        PAGE_HINTS[self.pages.get_current_page()], filename=self.document_name())
         # Open a small recipe far enough to start editing; cap initial work for larger ones.
         pos = 0
         while pos < min(80, self.rows.get_n_items()):
@@ -262,25 +296,157 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.source.search_entry.grab_focus()
         self.source.search_entry.select_region(0, -1)
 
+    def find(self, replacing=False, xpath=False):
+        if self.pages.get_current_page() == 1 and not replacing and not xpath:
+            self.find_source()
+        else:
+            self.pages.set_current_page(0)
+            self.tree_find.open(replacing, xpath)
+
+    def show_line(self, number):
+        self.pages.set_current_page(1)
+        buf = self.source.buffer
+        _, it = buf.get_iter_at_line(max(0, min(number, buf.get_line_count()) - 1))
+        buf.place_cursor(it)
+        self.source.view.scroll_to_mark(buf.get_insert(), 0.1, False, 0, 0)
+        self.source.view.grab_focus()
+
+    def corresponding_node(self):
+        if self.pages.get_current_page() == 0:
+            self.finish(True)
+            selected = self.selection.get_selected_item()
+            if not selected:
+                return
+            try:
+                raw, _, row = self.document.current_node(selected.get_item())
+            except FILE_ERRORS as error:
+                self.show_error("Could not locate the node", error)
+                return
+            start, end = row.bounds
+            if row.element:
+                end = start + 1 + len(row.name.encode())
+            self.pages.set_current_page(1)
+            buf = self.source.buffer
+            first = buf.get_iter_at_offset(len(raw[:start].decode("utf-8-sig")))
+            last = buf.get_iter_at_offset(len(raw[:end].decode("utf-8-sig")))
+            buf.select_range(first, last)
+            self.source.view.scroll_to_mark(buf.get_insert(), 0.1, False, 0, 0)
+            self.source.view.grab_focus()
+        else:
+            buf = self.source.buffer
+            offset = buf.get_iter_at_mark(buf.get_insert()).get_offset()
+            pos = len(self.source.xml[:offset].encode())
+            if self.document.source.startswith(codecs.BOM_UTF8):
+                pos += len(codecs.BOM_UTF8)
+            try:
+                row = self.document.row_at_source_position(pos)
+            except FILE_ERRORS as error:
+                self.show_error("Could not locate the node", error)
+                return
+            if row is not None:
+                self.pages.set_current_page(0)
+                self.reveal(row, focus=True)
+            else:
+                self.set_status("Place the cursor inside an XML node")
+
+    def compare(self, path=None):
+        self.finish(True)
+        try:
+            before = path.read_bytes() if path else self.document.disk_bytes
+            name = path.name if path else tr("Last saved" if self.document.path else "New document")
+            show_comparison(self, before, self.document.render(), name, self.document_name())
+        except FILE_ERRORS as error:
+            self.show_error("Could not compare XML", error)
+
+    def choose_comparison(self):
+        self.choose_reference("Compare with XML File…", self.compare, "Could not compare XML")
+
+    def choose_schema(self):
+        schema_filter = Gtk.FileFilter()
+        schema_filter.set_name("XML Schema (*.xsd)")
+        schema_filter.add_pattern("*.xsd")
+        self.choose_reference("Select an XML Schema", self.attach_schema, "Could not load the schema", schema_filter)
+
+    def choose_reference(self, title, use_path, error_message, file_filter=None):
+        dialog = Gtk.FileDialog(title=tr(title), modal=True)
+        if file_filter:
+            filters = Gio.ListStore.new(Gtk.FileFilter)
+            filters.append(file_filter)
+            dialog.set_filters(filters)
+
+        def chosen(dialog, result):
+            try:
+                path = dialog.open_finish(result).get_path()
+                if path is None:
+                    raise ValueError(tr("Choose a local file."))
+                use_path(Path(path))
+            except GLib.Error as error:
+                if not any(error.matches(Gtk.DialogError.quark(), code)
+                           for code in (Gtk.DialogError.DISMISSED, Gtk.DialogError.CANCELLED)):
+                    self.show_error(error_message, error)
+            except FILE_ERRORS as error:
+                self.show_error(error_message, error)
+
+        dialog.open(self, None, chosen)
+
+    def attach_schema(self, path):
+        schema = load_schema(path)
+        self.clear_schema()
+        self.schema = schema
+        self.lookup_action("clear-schema").set_enabled(True)
+        self.check_xml()
+
+    def clear_schema(self):
+        if self.schema_timer is not None:
+            GLib.source_remove(self.schema_timer)
+            self.schema_timer = None
+        self.schema = None
+        self.lookup_action("clear-schema").set_enabled(False)
+
+    def remove_schema(self):
+        self.clear_schema()
+        self.check_xml()
+
     def check_xml(self):
         self.finish(True)
         self.inspector.set_visible(True)
         self.inspector.set_current_page(0)
+        self.validate_current()
+
+    def validate_current(self):
         try:
-            self.document.render()
+            data = self.document.render()
+            issues = schema_issues(self.schema, data) if self.schema is not None else []
         except FILE_ERRORS as error:
             self.inspector.report(error, self.document.path)
         else:
-            self.inspector.report("XML is well-formed", self.document.path)
+            if issues:
+                self.inspector.report_issues(issues, self.document.path)
+            else:
+                message = "XML matches the schema" if self.schema is not None else "XML is well-formed"
+                self.inspector.report(message, self.document.path)
+
+    def recheck_schema(self):
+        self.schema_timer = None
+        self.validate_current()
+        return GLib.SOURCE_REMOVE
 
     def changed(self):
         self.inspector.report("Changes have not been checked", self.document.path)
         self.inspector.select_node(self.selection.get_selected_item())
         self.refresh_source()
+        if self.tree_find.get_visible():
+            self.tree_find.search(navigate=False)
+        if self.schema is not None:
+            if self.schema_timer is not None:
+                GLib.source_remove(self.schema_timer)
+            self.schema_timer = GLib.timeout_add(350, self.recheck_schema)
 
     def install_tree(self):
         self.cancel_scroll_anchor()
         self.clear_bottom_margin()
+        self.tree_find.discard_rows()
+        self.dragged = None
         self.rows = Gtk.TreeListModel.new(self.document.roots, False, False,
                                           lambda row: row.children if row.children.get_n_items() else None)
         self.watched_branches = set()
@@ -398,13 +564,17 @@ class RecipeWindow(Gtk.ApplicationWindow):
         item = self.selection.get_selected_item()
         row = item.get_item() if item else None
         self.inspector.select_node(item)
-        for name in ("sibling", "child", "attribute", "duplicate", "delete", "move-up", "move-down"):
+        for name, _, _ in NODE_COMMANDS:
             enabled = row is not None
             if enabled and name in ("move-up", "move-down"):
                 enabled = move_neighbor(self.rows.get_model(), row, name) is not None
-            elif enabled and name in ("child", "attribute"):
+            elif enabled and name in ("child", "attribute", "content"):
                 enabled = row.element
-            elif enabled and len(row.path) == 1:
+            elif enabled and name == "rename":
+                enabled = row.element or row.name.startswith("@")
+            elif enabled and name == "multiline":
+                enabled = row.value is not None
+            elif enabled and name not in ("copy", "paste", "locate-source") and len(row.path) == 1:
                 enabled = not row.element and name != "sibling"
             self.lookup_action(name).set_enabled(enabled)
 
@@ -434,16 +604,50 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def node_command(self, operation):
         self.finish(True)
         row = self.selection.get_selected_item().get_item()
+        if operation == "locate-source":
+            self.corresponding_node()
+            return
+        if operation == "multiline":
+            self.edit_multiline(row)
+            return
+        if operation == "content":
+            self.edit_multiline(row, adding=True)
+            return
+        if operation in ("cut", "copy"):
+            try:
+                text = self.document.copy_node(row)
+                stored = self.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(text))
+                if stored and operation == "cut":
+                    self.change_node(row, "delete")
+            except FILE_ERRORS as error:
+                self.show_error("Could not copy the node", error)
+            return
+        if operation in ("paste", "paste-after"):
+            doc, roots = self.document, self.document.roots
+
+            def pasted(clipboard, result):
+                try:
+                    text = clipboard.read_text_finish(result)
+                    if text and self.document is doc and doc.roots is roots:
+                        self.change_node(row, operation, text)
+                except GLib.Error as error:
+                    self.show_error("Could not paste the node", error)
+
+            self.get_clipboard().read_text_async(None, pasted)
+            return
         if operation in ("duplicate", "delete", "move-up", "move-down"):
             self.change_node(row, operation)
             return
+        rename = operation == "rename"
         attribute = operation == "attribute" or (operation == "sibling" and row.name.startswith("@"))
-        dialog = Gtk.Dialog(title=tr("Add Attribute" if attribute else "Add Element"),
+        title = "Rename Node" if rename else ("Add Attribute" if attribute else "Add Element")
+        dialog = Gtk.Dialog(title=tr(title),
                             transient_for=self, modal=True)
         dialog.add_button(tr("Cancel"), Gtk.ResponseType.CANCEL)
-        dialog.add_button(tr("Add"), Gtk.ResponseType.OK)
+        dialog.add_button(tr("Rename" if rename else "Add"), Gtk.ResponseType.OK)
         dialog.set_default_response(Gtk.ResponseType.OK)
-        entry = Gtk.Entry(text="attribute" if attribute else "element", activates_default=True,
+        initial = row.name.removeprefix("@") if rename else ("attribute" if attribute else "element")
+        entry = Gtk.Entry(text=initial, activates_default=True,
                           margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
         entry.update_property([Gtk.AccessibleProperty.LABEL], [tr("XML name")])
         dialog.get_content_area().append(entry)
@@ -459,6 +663,58 @@ class RecipeWindow(Gtk.ApplicationWindow):
         entry.grab_focus()
         entry.select_region(0, -1)
 
+    def edit_multiline(self, row, adding=False):
+        self.finish(True)
+        title = tr("Add Content") if adding else tr("Edit the value of {name}", name=row.name)
+        dialog = Gtk.Dialog(title=title, transient_for=self, modal=True)
+        dialog.add_button(tr("Cancel"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(tr("Apply"), Gtk.ResponseType.OK)
+        dialog.set_default_size(540, 300)
+        text = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, left_margin=8, top_margin=6)
+        buffer = text.get_buffer()
+        if adding:
+            types = (("text", "Text"), ("cdata", "CDATA"), ("comment", "Comment"), ("pi", "Processing Instruction"))
+            kind = Gtk.DropDown.new_from_strings([tr(label) for _, label in types])
+            kind.update_property([Gtk.AccessibleProperty.LABEL], [tr("Node type")])
+            target = Gtk.Entry(placeholder_text=tr("Instruction target"), visible=False)
+            kind.connect("notify::selected", lambda *_: target.set_visible(kind.get_selected() == 3))
+            dialog.get_content_area().append(kind)
+            dialog.get_content_area().append(target)
+        else:
+            buffer.set_text(row.value)
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        scroll.set_child(text)
+        dialog.get_content_area().append(scroll)
+
+        def key_pressed(controller, key, code, mods):
+            if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and mods == Gdk.ModifierType.CONTROL_MASK:
+                dialog.response(Gtk.ResponseType.OK)
+                return True
+            return False
+
+        def answered(dialog, response):
+            if response == Gtk.ResponseType.OK:
+                value = buffer.get_text(*buffer.get_bounds(), True)
+                if adding:
+                    data = types[kind.get_selected()][0], value, target.get_text()
+                    try:
+                        selected = self.document.structure(row, "content", data)
+                    except FILE_ERRORS as error:
+                        Gtk.AlertDialog(message=tr("Could not update the node"), detail=error_text(error)).show(dialog)
+                        return
+                    self.show_change(selected)
+                else:
+                    self.document.edit(row, value)
+                    self.show_change(row)
+            dialog.destroy()
+
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", key_pressed)
+        text.add_controller(keys)
+        dialog.connect("response", answered)
+        dialog.present()
+        text.grab_focus()
+
     def change_node(self, row, operation, name=""):
         try:
             selected = self.document.structure(row, operation, name)
@@ -472,17 +728,25 @@ class RecipeWindow(Gtk.ApplicationWindow):
         rebuilt = self.rows.get_model() != self.document.roots
         if rebuilt:
             self.install_tree()
-        self.refresh_value(row)
+        self.refresh_visible_values()
         self.changed()
+        self.reveal(row, focus=True, expand_target=rebuilt)
+
+    def reveal(self, row, focus=False, expand_target=False):
         target = self.rows.get_child_row(row.path[0])
         for index in row.path[1:]:
             target.set_expanded(True)
             target = target.get_child_row(index)
-        if rebuilt:
+        if expand_target:
             target.set_expanded(True)
-        flags = Gtk.ListScrollFlags.SELECT | Gtk.ListScrollFlags.FOCUS
+        self.selection.set_selected(target.get_position())
+        flags = Gtk.ListScrollFlags.FOCUS if focus else Gtk.ListScrollFlags(0)
         self.scroll_to_row(target.get_position(), self.value_column, flags)
-        self.view.grab_focus()
+        if focus:
+            self.view.grab_focus()
+
+    def document_name(self):
+        return self.document.path.name if self.document.path else tr("Untitled.xml")
 
     def update_history_actions(self):
         for action, stack in (("undo", self.document.undo_stack), ("redo", self.document.redo_stack)):
@@ -491,7 +755,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def update_title(self):
         self.update_history_actions()
         marker = "● " if self.document.dirty else ""
-        self.set_title(f"{marker}{self.document.path.name} — BranchXML · GTK")
+        self.set_title(f"{marker}{self.document_name()} — BranchXML")
 
     def show_error(self, message, error):
         Gtk.AlertDialog(message=tr(message), detail=error_text(error), buttons=[tr("Close")]).show(self)
@@ -501,7 +765,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if not self.document.dirty:
             proceed()
             return
-        dialog = Gtk.AlertDialog(message=tr("Save changes to {filename}?", filename=self.document.path.name),
+        dialog = Gtk.AlertDialog(message=tr("Save changes to {filename}?", filename=self.document_name()),
                                  buttons=[tr("Cancel"), tr("Discard Changes"), tr("Save")],
                                  cancel_button=0, default_button=2)
 
@@ -510,7 +774,9 @@ class RecipeWindow(Gtk.ApplicationWindow):
                 answer = dialog.choose_finish(result)
             except GLib.Error:
                 return
-            if answer == 1 or (answer == 2 and self.save()):
+            if answer == 2 and self.document.path is None:
+                self.choose_file(True, after_save=proceed)
+            elif answer == 1 or (answer == 2 and self.save()):
                 proceed()
 
         dialog.choose(self, None, answered)
@@ -522,19 +788,21 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.confirm_changes(self.destroy)
         return True
 
-    def choose_file(self, save_as):
+    def choose_file(self, save_as, after_save=None):
         self.finish(True)
         path = self.document.path
         dialog = Gtk.FileDialog(title=tr("Save As" if save_as else "Open XML"), modal=True,
                                 accept_label=tr("Save" if save_as else "Open"))
-        dialog.set_initial_folder(Gio.File.new_for_path(str(path.absolute().parent)))
+        if path:
+            dialog.set_initial_folder(Gio.File.new_for_path(str(path.absolute().parent)))
         if save_as:
-            dialog.set_initial_name(tr("{stem}-copy{suffix}", stem=path.stem, suffix=path.suffix))
-            dialog.save(self, None, self.file_chosen, True)
+            dialog.set_initial_name(tr("{stem}-copy{suffix}", stem=path.stem, suffix=path.suffix)
+                                    if path else self.document_name())
+            dialog.save(self, None, lambda dialog, result: self.file_chosen(dialog, result, True, after_save))
         else:
             dialog.open(self, None, self.file_chosen, False)
 
-    def file_chosen(self, dialog, result, save_as):
+    def file_chosen(self, dialog, result, save_as, after_save=None):
         try:
             file = dialog.save_finish(result) if save_as else dialog.open_finish(result)
             path = file.get_path()
@@ -549,7 +817,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.show_error("Could not select the file", error)
             return
         if save_as:
-            self.save(path)
+            if self.save(path) and after_save:
+                after_save()
         else:
             self.confirm_changes(lambda: self.open_path(path))
 
@@ -557,7 +826,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         try:
             doc = Document(path)
         except FILE_ERRORS as error:
-            self.inspector.report(error, Path(path))
+            self.inspector.report(error, Path(path), navigable=False)
             self.inspector.set_visible(True)
             self.inspector.set_current_page(0)
             self.show_error("Could not open the file", error)
@@ -566,6 +835,9 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def save(self, path=None):
         self.finish(True)
+        if path is None and self.document.path is None:
+            self.choose_file(True)
+            return False
         try:
             self.document.save(path or self.document.path)
         except FILE_ERRORS as error:
@@ -574,7 +846,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
             return False
         self.update_title()
         self.chrome.sync_path()
-        self.inspector.report("XML is well-formed", self.document.path)
+        self.validate_current()
         self.set_status("Saved to {path}", path=self.document.path)
         return True
 
@@ -582,6 +854,68 @@ class RecipeWindow(Gtk.ApplicationWindow):
         expander = Gtk.TreeExpander()
         expander.set_child(appearance.name_cell())
         item.set_child(expander)
+        source = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
+        source.connect("prepare", self.prepare_drag, item)
+        source.connect("drag-end", lambda *_: setattr(self, "dragged", None))
+        expander.add_controller(source)
+        drop = Gtk.DropTarget.new(str, Gdk.DragAction.MOVE)
+        drop.connect("accept", lambda *_: self.dragged is not None)
+        drop.connect("enter", self.drag_motion, item)
+        drop.connect("motion", self.drag_motion, item)
+        drop.connect("leave", lambda *_: self.clear_drop_mark(expander))
+        drop.connect("drop", self.drop_element, item)
+        expander.add_controller(drop)
+
+    def prepare_drag(self, controller, x, y, item):
+        row = item.get_item().get_item()
+        if row.element and len(row.path) > 1:
+            self.finish(True)
+            try:
+                content = self.document.copy_node(row)
+            except FILE_ERRORS as error:
+                self.show_error("Could not copy the node", error)
+                return None
+            self.dragged = row
+            return Gdk.ContentProvider.new_for_value(content)
+        return None
+
+    def clear_drop_mark(self, widget):
+        for name in ("before", "after", "inside"):
+            widget.remove_css_class("bx-drop-" + name)
+
+    def drop_position(self, item, y):
+        target = item.get_item().get_item()
+        if not self.dragged or not target.element or target.path[:len(self.dragged.path)] == self.dragged.path:
+            return None
+        if len(target.path) > 1:
+            fraction = y / max(1, item.get_child().get_height())
+            if fraction < .25:
+                return "before"
+            if fraction > .75:
+                return "after"
+        return "inside"
+
+    def drag_motion(self, controller, x, y, item):
+        widget = item.get_child()
+        self.clear_drop_mark(widget)
+        position = self.drop_position(item, y)
+        if position:
+            widget.add_css_class("bx-drop-" + position)
+            return Gdk.DragAction.MOVE
+        return Gdk.DragAction(0)
+
+    def drop_element(self, controller, text, x, y, item):
+        position = self.drop_position(item, y)
+        self.clear_drop_mark(item.get_child())
+        if self.dragged is None or position is None:
+            return False
+        try:
+            selected = self.document.move_element(self.dragged, item.get_item().get_item(), position)
+        except FILE_ERRORS as error:
+            self.show_error("Could not update the node", error)
+            return False
+        self.show_change(selected)
+        return True
 
     def bind_name(self, factory, item):
         tree_row = item.get_item()
@@ -593,6 +927,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def unbind_name(self, factory, item):
         expander = item.get_child()
+        self.clear_drop_mark(expander)
         self.name_cells.pop(expander.get_child(), None)
         expander.set_list_row(None)
 
@@ -655,9 +990,13 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
     def request_edit(self, pos):
         tree_row = self.rows.get_item(pos)
-        if tree_row is None or not is_editable(tree_row.get_item()):
+        if tree_row is None or tree_row.get_item().value is None:
             return
         row = tree_row.get_item()
+        if not is_editable(row):
+            self.selection.set_selected(pos)
+            self.edit_multiline(row)
+            return
         if row is self.active:
             return
         if self.active:
@@ -692,6 +1031,13 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.update_title()
         label = self.cells.get(row)
         if label is not None:
+            appearance.set_value(label, row)
+            label.set_text(row.value or "")
+            label.set_tooltip_text(row.value or None)
+
+    def refresh_visible_values(self):
+        self.update_title()
+        for row, label in self.cells.items():
             appearance.set_value(label, row)
             label.set_text(row.value or "")
             label.set_tooltip_text(row.value or None)
@@ -769,6 +1115,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
         if self.active:
             return False
         mods &= Gtk.accelerator_get_default_mod_mask()
+        if key == Gdk.KEY_F3 and self.tree_find.get_visible():
+            self.tree_find.move(-1 if mods & Gdk.ModifierType.SHIFT_MASK else 1)
+            return True
+        if key == Gdk.KEY_Escape and self.tree_find.get_visible():
+            self.tree_find.close()
+            return True
         if ((key == Gdk.KEY_Menu and not mods) or
                 (key == Gdk.KEY_F10 and mods == Gdk.ModifierType.SHIFT_MASK)):
             target = self.selection.get_selected_item()
@@ -782,6 +1134,11 @@ class RecipeWindow(Gtk.ApplicationWindow):
             (Gdk.KEY_Up, Gdk.ModifierType.ALT_MASK): "move-up",
             (Gdk.KEY_Down, Gdk.ModifierType.ALT_MASK): "move-down",
             (Gdk.KEY_d, Gdk.ModifierType.CONTROL_MASK): "duplicate", (Gdk.KEY_Delete, 0): "delete",
+            (Gdk.KEY_c, Gdk.ModifierType.CONTROL_MASK): "copy", (Gdk.KEY_x, Gdk.ModifierType.CONTROL_MASK): "cut",
+            (Gdk.KEY_v, Gdk.ModifierType.CONTROL_MASK): "paste",
+            (Gdk.KEY_v, Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK): "paste-after",
+            (Gdk.KEY_F2, Gdk.ModifierType.SHIFT_MASK): "rename",
+            (Gdk.KEY_Return, Gdk.ModifierType.SHIFT_MASK): "multiline",
         }
         command = commands.get((Gdk.keyval_to_lower(key), mods))
         if command:
@@ -792,6 +1149,19 @@ class RecipeWindow(Gtk.ApplicationWindow):
         pos = self.selection.get_selected()
         if pos == Gtk.INVALID_LIST_POSITION:
             return False
+        if not mods and key in (Gdk.KEY_Left, Gdk.KEY_Right):
+            branch = self.rows.get_item(pos)
+            if key == Gdk.KEY_Left:
+                if branch.get_expanded():
+                    branch.set_expanded(False)
+                elif branch.get_parent():
+                    self.reveal(branch.get_parent().get_item(), focus=True)
+            elif branch.is_expandable():
+                if branch.get_expanded():
+                    self.reveal(branch.get_child_row(0).get_item(), focus=True)
+                else:
+                    branch.set_expanded(True)
+            return True
         if key in (Gdk.KEY_F2, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             self.request_edit(pos)
             return True
@@ -806,17 +1176,26 @@ class RecipeWindow(Gtk.ApplicationWindow):
 
 def main():
     parser = argparse.ArgumentParser(description=tr("BranchXML GTK 4 XML editor."))
-    parser.add_argument("xml", nargs="?", type=Path,
-                        default=Path(__file__).resolve().parents[2] / "examples/demo.xml", help=tr("XML file to open"))
+    parser.add_argument("--version", action="version", version=f"BranchXML {VERSION}")
+    parser.add_argument("xml", nargs="?", type=Path, help=tr("XML file to open"))
     path = parser.parse_args().xml
     if Gtk.check_version(4, 12, 0):
         parser.exit(1, tr("BranchXML requires GTK 4.12 or later.") + "\n")
-    try:
-        document = Document(path)
-    except FILE_ERRORS as error:
-        parser.exit(1, f"{path}: {error_text(error)}\n")
+    GLib.set_application_name("BranchXML")
     app = Gtk.Application(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
-    app.connect("activate", lambda app: RecipeWindow(app, document).present())
+
+    def activate(application):
+        try:
+            document = Document(path)
+        except FILE_ERRORS as error:
+            window = RecipeWindow(application, Document())
+            window.present()
+            window.inspector.report(error, path, navigable=False)
+            window.show_error("Could not open the file", error)
+        else:
+            RecipeWindow(application, document).present()
+
+    app.connect("activate", activate)
     return app.run([])
 
 

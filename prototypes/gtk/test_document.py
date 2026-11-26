@@ -208,6 +208,128 @@ class SaveTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "DTD"):
             Document(self.path)
 
+    def test_new_document_rename_and_grouped_value_undo(self):
+        doc = Document()
+        self.assertIsNone(doc.path)
+        root = doc.structure(doc.roots.get_item(0), "rename", "配方")
+        a = doc.structure(root, "attribute", "n")
+        b = doc.structure(a, "duplicate")
+        a = row_at(doc.roots, a.path)
+        self.assertEqual(doc.edit_values([(a, "茶"), (b, "水")]), 2)
+        doc.save(self.copy)
+        self.assertIn('n="茶" n_copy="水"', self.copy.read_text())
+        doc.step_history(False)
+        self.assertIn(b'n="" n_copy=""', doc.render())
+        doc.step_history(True)
+        doc.structure(row_at(doc.roots, a.path), "rename", "数量")
+        with self.assertRaises((ValueError, ExpatError)):
+            doc.structure(row_at(doc.roots, a.path), "rename", "n_copy")
+        self.assertIn('数量="茶"', doc.render().decode())
+
+    def test_clipboard_preserves_namespaces_layout_and_undo(self):
+        original = b"<r xmlns:p='urn:one'><p:a k='1'><plain/><!--note--></p:a></r>"
+        self.path.write_bytes(original)
+        src = Document(self.path)
+        src.edit(row_at(src.roots, (0, 1, 0)), "changed")
+        branch = src.copy_node(row_at(src.roots, (0, 1)))
+        self.copy.write_bytes(b"<dest xmlns='urn:other' xmlns:p='urn:two'/>")
+        dst = Document(self.copy)
+        original_dest = dst.render()
+        pasted = dst.structure(dst.roots.get_item(0), "paste", branch)
+        from xml.etree.ElementTree import fromstring
+        child = fromstring(dst.render())[0]
+        self.assertEqual((child.tag, child[0].tag, child.get("k")), ("{urn:one}a", "plain", "changed"))
+        renamed = dst.structure(pasted, "rename", "p:b")
+        self.assertEqual(renamed.name, "p:b")
+        self.assertIn(b"</p:b>", dst.render())
+        for _ in range(2):
+            dst.step_history(False)
+        self.assertEqual(dst.render(), original_dest)
+        dst.step_history(True)
+        self.assertIn(b"<!--note-->", dst.render())
+        previous = dst.render()
+        with self.assertRaises((ValueError, ExpatError)):
+            dst.structure(dst.roots.get_item(0), "paste", "</dest><other/>")
+        self.assertEqual(dst.render(), previous)
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_clipboard_attribute_bindings(self):
+        self.path.write_bytes(b"<r xmlns:p='urn:id'><a p:id='8'/><b/></r>")
+        doc = Document(self.path)
+        clip = doc.copy_node(row_at(doc.roots, (0, 1, 0)))
+        self.assertIn("xmlns:p", clip)
+        attr = doc.structure(row_at(doc.roots, (0, 2)), "paste", clip)
+        self.assertEqual(attr.name, "@p:id")
+        self.assertIn(b"<b p:id='8'/>", doc.render())
+        prev = doc.render()
+        with self.assertRaises(ValueError):
+            doc.structure(row_at(doc.roots, (0, 2)), "paste", "xmlns:p='urn:other' p:id='9'")
+        self.assertEqual(doc.render(), prev)
+
+    def test_clipboard_preserves_text_that_looks_like_an_attribute_and_whitespace(self):
+        self.path.write_text("<r><a/>颜色='绿'<b/></r>")
+        doc = Document(self.path)
+        text = doc.copy_node(row_at(doc.roots, (0, 1)))
+        pasted = doc.structure(row_at(doc.roots, (0, 2)), "paste", text)
+        self.assertEqual((pasted.name, pasted.value), ("b", "颜色='绿'"))
+        doc.structure(row_at(doc.roots, (0, 0)), "paste", "  ")
+        self.assertIn(b"<a>  </a>", doc.render())
+        doc.step_history(False)
+        doc.step_history(False)
+        self.assertEqual(doc.render(), self.path.read_bytes())
+
+    def test_create_mixed_content_then_undo_to_exact_original(self):
+        original = b"<r a='1' />"
+        self.path.write_bytes(original)
+        doc = Document(self.path)
+        for fields in (("text", "A & B", ""), ("cdata", "茶]]>水", ""),
+                       ("comment", "note", ""), ("pi", "one", "step")):
+            doc.structure(doc.roots.get_item(0), "content", fields)
+        self.assertIn(b"A &amp; B", doc.render())
+        self.assertIn(b"<!--note--><?step one?>", doc.render())
+        self.assertIn(b"]]]]><![CDATA[>", doc.render())
+        for fields in (("comment", "--", ""), ("pi", "bad?>", "p"), ("pi", "x", "invalid target")):
+            with self.assertRaises(ValueError):
+                doc.structure(doc.roots.get_item(0), "content", fields)
+        for _ in range(4):
+            doc.step_history(False)
+        self.assertEqual(doc.render(), original)
+
+    def test_drag_subtree_is_one_edit_with_namespace_fixup(self):
+        from xml.etree.ElementTree import fromstring
+        original = b"<r>\r\n  <a xmlns:p='urn:one'><p:task id='x'><plain/></p:task></a>\r\n  <b xmlns='urn:two'/>\r\n</r>"
+        self.path.write_bytes(original)
+        doc = Document(self.path)
+        a, b = doc.roots.get_item(0).children
+        task = a.children.get_item(1)
+        doc.edit(task.children.get_item(0), "longer")
+        moved = doc.move_element(task, b, "inside")
+        self.assertEqual(moved.name, "p:task")
+        tree = fromstring(doc.render())
+        self.assertEqual((tree[1][0].tag, tree[1][0][0].tag, tree[1][0].get("id")),
+                         ("{urn:one}task", "plain", "longer"))
+        with self.assertRaises(ValueError):
+            doc.move_element(row_at(doc.roots, (0, 1)), moved, "inside")
+        self.assertEqual(len(doc.undo_stack), 2)
+        doc.step_history(False)
+        self.assertEqual(doc.render(), original.replace(b"id='x'", b"id='longer'"))
+        doc.step_history(True)
+        doc.save(self.copy)
+        self.assertEqual(fromstring(self.copy.read_bytes())[1][0].tag, "{urn:one}task")
+        doc.step_history(False)
+        doc.step_history(False)
+        self.assertEqual(doc.render(), original)
+
+    def test_drag_before_and_after_keep_sibling_layout(self):
+        self.path.write_bytes(b"<r xmlns='ns'>\n  <a/>\n  <b/>\n  <c/>\n</r>")
+        doc = Document(self.path)
+        attr, a, b, c = doc.roots.get_item(0).children
+        doc.move_element(c, a, "before")
+        self.assertEqual(doc.render(), b"<r xmlns='ns'>\n  <c/>\n  <a/>\n  <b/>\n</r>")
+        attr, c, a, b = doc.roots.get_item(0).children
+        doc.move_element(c, b, "after")
+        self.assertEqual(doc.render(), self.path.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()
