@@ -10,7 +10,7 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 python3-pygments python3-lxml sway wtype dbus-daemon gettext desktop-file-utils
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 python3-pygments python3-lxml sway wtype dbus-daemon gettext desktop-file-utils gsettings-desktop-schemas
       - name: Test the XML model and GTK on Wayland
         run: |
           msgfmt --check -o /tmp/branchxml.mo prototypes/gtk/locale/zh_CN/LC_MESSAGES/branchxml.po

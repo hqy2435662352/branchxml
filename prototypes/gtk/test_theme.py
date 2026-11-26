@@ -41,7 +41,10 @@ class ColorSchemeTest(unittest.TestCase):
                 self.assertEqual(theme_name_for_scheme("Unknown-dark", False), "Default")
 
     def test_gnome_color_scheme_and_theme_survive_an_override(self):
-        schema = Gio.SettingsSchemaSource.get_default().lookup("org.gnome.desktop.interface", True)
+        source = Gio.SettingsSchemaSource.get_default()
+        schema = source.lookup("org.gnome.desktop.interface", True) if source else None
+        if schema is None or not schema.has_key("color-scheme"):
+            self.skipTest("GNOME desktop color-scheme settings are unavailable")
         desktop = Gio.Settings.new_full(schema, Gio.memory_settings_backend_new(), None)
         desktop.set_string("gtk-theme", "Yaru-dark")
         desktop.set_string("color-scheme", "default")
