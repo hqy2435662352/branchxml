@@ -10,11 +10,12 @@ from xml.parsers.expat import ExpatError
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gio, GLib, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
 
 import appearance
 from app_info import APP_ID, VERSION
 import i18n
+import theme
 from chrome import Chrome
 from comparison import show_comparison
 from document import Document, error_text, move_neighbor
@@ -53,13 +54,26 @@ def cell_label():
     return label
 
 
+def application_theme(app):
+    if not hasattr(app, "theme_manager"):
+        def changed(manager):
+            for window in app.get_windows():
+                if isinstance(window, RecipeWindow):
+                    window.apply_theme(manager)
+
+        app.theme_manager = theme.ThemeManager(changed)
+        app.connect("shutdown", lambda application: application.theme_manager.close())
+    return app.theme_manager
+
+
 class RecipeWindow(Gtk.ApplicationWindow):
+    dark = GObject.Property(type=bool, default=False)
+
     def __init__(self, app, document):
         super().__init__(application=app)
         self.set_default_size(920, 690)
         self.add_css_class("branchxml")
         self.font_size = appearance.load_font_size()
-        appearance.install(self.get_display(), self.font_size)
         self.set_icon_name(APP_ID)
         titlebar = Gtk.HeaderBar()
         titlebar.add_css_class("bx-title")
@@ -175,6 +189,12 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.pages.append_page(self.tree_page, Gtk.Label())
         self.source = SourcePage()
         self.pages.append_page(self.source, Gtk.Label())
+        manager = application_theme(app)
+        theme_action = Gio.SimpleAction.new_stateful("theme", GLib.VariantType.new("s"),
+                                                    GLib.Variant("s", manager.preference))
+        theme_action.connect("change-state", self.change_theme)
+        self.add_action(theme_action)
+        self.apply_theme(manager)
         for page in (self.tree_page, self.source):
             wheel = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
             wheel.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -242,7 +262,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         except (OSError, GLib.Error) as error:
             self.show_error("Could not save the font size", error)
             return
-        appearance.install(self.get_display(), size)
+        appearance.install(self.get_display(), size, self.dark)
         for window in self.get_application().get_windows():
             if isinstance(window, RecipeWindow) and window.get_display() == self.get_display():
                 window.font_size = size
@@ -256,6 +276,21 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.lookup_action("font-increase").set_enabled(self.font_size < appearance.MAX_FONT_SIZE)
         self.lookup_action("font-decrease").set_enabled(self.font_size > appearance.MIN_FONT_SIZE)
         self.lookup_action("font-reset").set_enabled(self.font_size != appearance.DEFAULT_FONT_SIZE)
+
+    def apply_theme(self, manager):
+        self.dark = manager.dark
+        appearance.install(self.get_display(), self.font_size, self.dark)
+        self.source.set_dark(self.dark)
+        self.lookup_action("theme").set_state(GLib.Variant("s", manager.preference))
+
+    def change_theme(self, action, value):
+        choice = value.get_string()
+        if choice not in theme.CHOICES or choice == action.get_state().get_string():
+            return
+        try:
+            self.get_application().theme_manager.set_preference(choice)
+        except (OSError, GLib.Error) as error:
+            self.show_error("Could not save the theme preference", error)
 
     def change_language(self, action, value):
         choice = value.get_string()

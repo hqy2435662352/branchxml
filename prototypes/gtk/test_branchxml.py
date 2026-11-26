@@ -8,6 +8,7 @@ import unittest
 from branchxml import Gdk, GLib, Gio, Gtk, RecipeWindow, Document
 import appearance
 import i18n
+import theme
 from i18n import tr
 
 
@@ -271,6 +272,48 @@ class InputTest(unittest.TestCase):
             self.assertEqual(appearance.load_font_size(), appearance.DEFAULT_FONT_SIZE)
             self.assertFalse(win.document.dirty)
             self.assertEqual(win.document.render(), original)
+
+    def test_theme_action_preserves_edits_and_recolors_source_matches(self):
+        with (TemporaryDirectory() as temp,
+              patch.object(theme, "preference_file", return_value=Path(temp) / "theme")):
+            path = Path(temp) / "recipe.xml"
+            original = "<recipe name='茶'><task>热水</task></recipe>".encode()
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            manager = self.app.theme_manager
+            initial_choice = manager.preference
+            try:
+                win.activate_action("win.theme", GLib.Variant("s", "light"))
+                win.request_edit(1)
+                wait_for(lambda: win.placed)
+                win.entry.set_text("草稿")
+                win.activate_action("win.theme", GLib.Variant("s", "dark"))
+                self.assertTrue(win.dark)
+                self.assertEqual(win.entry.get_text(), "草稿")
+                self.assertIsNotNone(win.active)
+                win.edit_key(None, Gdk.KEY_Escape, 0, 0)
+                win.find_source()
+                source = win.source
+                source.search_entry.set_text("task")
+                matches = list(source.matches)
+                self.assertEqual(len(matches), 2)
+                dark_highlight = source.current_hit.props.background_rgba.to_string()
+                second = RecipeWindow(self.app, Document())
+                self.addCleanup(second.destroy)
+                self.assertTrue(second.dark)
+                second.activate_action("win.theme", GLib.Variant("s", "light"))
+                self.assertFalse(win.dark)
+                self.assertEqual(win.lookup_action("theme").get_state().get_string(), "light")
+                self.assertNotEqual(source.current_hit.props.background_rgba.to_string(), dark_highlight)
+                self.assertEqual(source.matches, matches)
+                self.assertEqual(theme.read_preference(), "light")
+                self.assertFalse(win.document.dirty)
+                self.assertEqual(win.document.render(), original)
+            finally:
+                manager.set_preference(initial_choice)
 
     def test_language_menu_preserves_edits_tree_state_and_search(self):
         with (TemporaryDirectory() as temp,

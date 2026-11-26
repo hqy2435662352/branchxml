@@ -60,6 +60,18 @@ msgstr "跟随系统"
 msgid "Language"
 msgstr "语言"
 
+msgid "Theme"
+msgstr "主题"
+
+msgid "Light"
+msgstr "浅色"
+
+msgid "Dark"
+msgstr "深色"
+
+msgid "Could not save the theme preference"
+msgstr "无法保存主题设置"
+
 msgid "Font Size"
 msgstr "字体大小"
 

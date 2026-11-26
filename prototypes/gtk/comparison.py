@@ -43,6 +43,7 @@ def comparison(before, after, old_name, new_name):
 def show_comparison(parent, before, after, old_name, new_name):
     header, lines = comparison(before, after, old_name, new_name)
     dialog = Gtk.Dialog(title=tr("Compare XML"), transient_for=parent, modal=True)
+    dialog.add_css_class("branchxml")
     dialog.set_default_size(760, 460)
     dialog.add_button(tr("Close"), Gtk.ResponseType.CLOSE)
     dialog.connect("response", lambda d, *_: d.destroy())
@@ -53,8 +54,8 @@ def show_comparison(parent, before, after, old_name, new_name):
         view = Gtk.TextView(editable=False, monospace=True, left_margin=10, top_margin=6)
         view.add_css_class("bx-document-text")
         buf = view.get_buffer()
-        buf.create_tag("add", background="#dcf4df", foreground="#174f2b")
-        buf.create_tag("remove", background="#fbe1df", foreground="#742822")
+        added = buf.create_tag("add")
+        removed = buf.create_tag("remove")
         for line in lines:
             if line.startswith(("+", "-")):
                 buf.insert_with_tags_by_name(buf.get_end_iter(), line + "\n", "add" if line[0] == "+" else "remove")
@@ -63,4 +64,14 @@ def show_comparison(parent, before, after, old_name, new_name):
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_child(view)
         box.append(scroll)
+
+        def update_diff_colors(window, *_):
+            added.props.background = "#27482f" if window.dark else "#dcf4df"
+            added.props.foreground = "#b8e6c2" if window.dark else "#174f2b"
+            removed.props.background = "#542e2b" if window.dark else "#fbe1df"
+            removed.props.foreground = "#efbdb4" if window.dark else "#742822"
+
+        update_diff_colors(parent)
+        theme_handler = parent.connect("notify::dark", update_diff_colors)
+        dialog.connect("unrealize", lambda *_: parent.disconnect(theme_handler))
     dialog.present()

@@ -15,7 +15,7 @@ sys.path.insert(0, str(GTK))
 from app_info import APP_ID
 
 MODULES = ("app_info", "appearance", "branchxml", "chrome", "comparison", "document", "i18n", "inspector",
-           "source_view", "tree_find", "xml_tools")
+           "source_view", "theme", "tree_find", "xml_tools")
 ICON = Path("icons/hicolor/512x512/apps") / (APP_ID + ".png")
 CATALOG = Path("locale/zh_CN/LC_MESSAGES/branchxml.mo")
 

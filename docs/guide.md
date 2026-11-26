@@ -78,6 +78,8 @@ Launch **BranchXML** from the applications menu, choose **Open With → BranchXM
 
 The interface follows your desktop language and falls back to English. Under **View → Language**, choose **System Default**, **English** or **简体中文**. The change takes effect immediately and is remembered next time. The system file chooser follows the desktop language.
 
+Under **View → Theme**, choose **System Default**, **Light** or **Dark**. System Default follows your desktop color scheme. BranchXML remembers your choice the next time you open it.
+
 ## Adjust the document font size
 
 In the tree or XML source, hold **Ctrl** and scroll the mouse wheel up to enlarge the text or down to reduce it. Both views and the value editor share the same size. You can also use **View → Font Size**, press **Ctrl+=** or **Ctrl++** to enlarge the text, **Ctrl+-** to reduce it, or **Ctrl+0** to restore the default. BranchXML remembers your choice the next time you open it.

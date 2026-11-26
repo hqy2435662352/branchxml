@@ -5,6 +5,7 @@ from pathlib import Path
 from gi.repository import Gio, Gtk
 
 from i18n import CHOICES, tr
+import theme
 
 
 class Chrome(Gtk.Box):
@@ -85,6 +86,10 @@ class Chrome(Gtk.Box):
                                     ("Reset Font Size", "font-reset")):
                     fonts.append(tr(label), "win." + name)
                 menu.append_submenu(tr("Font Size"), fonts)
+                themes = Gio.Menu()
+                for choice, label in theme.CHOICES.items():
+                    themes.append(tr(label), "win.theme::" + choice)
+                menu.append_submenu(tr("Theme"), themes)
                 languages = Gio.Menu()
                 for choice, label in CHOICES.items():
                     languages.append(tr(label) if choice == "system" else label, "win.language::" + choice)

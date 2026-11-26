@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from string import Template
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -10,13 +11,56 @@ from gi.repository import GLib, Gtk, Pango
 from i18n import tr
 
 
+COLORS = {
+    "drop_edge": ("#477056", "#8aaa8f"),
+    "drop_fill": ("#d3e4d5", "#314238"),
+    "canvas": ("#fbfaf7", "#1d211f"),
+    "foreground": ("#30332e", "#e0e5df"),
+    "focus_outline": ("#57735d", "#9abb9e"),
+    "selected_row": ("#e8ede5", "#38443a"),
+    "focused_row": ("#dbe8db", "#405744"),
+    "selection_edge": ("#52715b", "#9cbc9f"),
+    "header": ("#efeee9", "#272b28"),
+    "chrome_text": ("#43473f", "#c9cec6"),
+    "hover": ("#e5e5de", "#343934"),
+    "tree_line": ("#9a9f94", "#5e695e"),
+    "expander_icon": ("#42493e", "#d3dbd1"),
+    "expander_border": ("#858c80", "#889288"),
+    "element_mark": ("#4a6b83", "#93adc3"),
+    "attribute_mark": ("#9b5941", "#d3997f"),
+    "text_mark": ("#547951", "#9cba91"),
+    "folder": ("#996b24", "#d6b46b"),
+    "element": ("#334d60", "#acc2d3"),
+    "attribute": ("#88452f", "#ddad94"),
+    "text_node": ("#486748", "#b0d0a5"),
+    "value": ("#395b43", "#acd0b1"),
+    "number": ("#3b5678", "#a6bedc"),
+    "boolean": ("#734d75", "#d4b0d7"),
+    "empty": ("#63685e", "#b4bbb1"),
+    "editor_border": ("#51765c", "#99bd9d"),
+    "entry_bg": ("#ffffff", "#282e2a"),
+    "entry_text": ("#262b25", "#e1e8e0"),
+    "selected_text_bg": ("#cbdfcf", "#405742"),
+    "selected_text_fg": ("#203627", "#d4e4d5"),
+    "chrome": ("#f3f2ee", "#242825"),
+    "caption": ("#383c35", "#d8ddd5"),
+    "entry_border": ("#b8bab1", "#535b54"),
+    "separator": ("#d8d9d1", "#404741"),
+    "separator_hover": ("#99ab98", "#77957d"),
+    "tab_line": ("#cdc7c2", "#485048"),
+    "tab_label": ("#51564c", "#b9c0b8"),
+    "active_tab_label": ("#303c30", "#dce5db"),
+    "active_tab_line": ("#637f65", "#86a98b"),
+    "status": ("#53584f", "#b6bdb3"),
+}
+
 CSS = """
-.branchxml .bx-drop-before { box-shadow: inset 0 2px #477056; }
-.branchxml .bx-drop-after { box-shadow: inset 0 -2px #477056; }
-.branchxml .bx-drop-inside { background-color: #d3e4d5; }
+.branchxml .bx-drop-before { box-shadow: inset 0 2px $drop_edge; }
+.branchxml .bx-drop-after { box-shadow: inset 0 -2px $drop_edge; }
+.branchxml .bx-drop-inside { background-color: $drop_fill; }
 .branchxml {
-  background: #fbfaf7;
-  color: #30332e;
+  background: $canvas;
+  color: $foreground;
 }
 .branchxml .bx-tree,
 .branchxml .bx-tree listview,
@@ -25,8 +69,8 @@ CSS = """
 .branchxml notebook.bx-pages,
 .branchxml notebook.bx-inspector,
 .branchxml .bx-inspector grid {
-  background: #fbfaf7;
-  color: #30332e;
+  background: $canvas;
+  color: $foreground;
 }
 .branchxml .bx-tree {
   font-family: monospace;
@@ -35,21 +79,21 @@ CSS = """
 .branchxml .bx-tree row {
   min-height: 24px;
   padding: 0;
-  background: #fbfaf7;
+  background: $canvas;
   border: none;
 }
 .branchxml .bx-tree row,
 .branchxml .bx-tree cell,
 .branchxml entry {
-  outline-color: #57735d;
+  outline-color: $focus_outline;
 }
 .branchxml .bx-tree row:selected {
-  background: #e8ede5;
+  background: $selected_row;
 }
 .branchxml .bx-tree row:selected:focus,
 .branchxml .bx-tree row:selected:focus-within {
-  background: #dbe8db;
-  box-shadow: inset 2px 0 #52715b;
+  background: $focused_row;
+  box-shadow: inset 2px 0 $selection_edge;
 }
 .branchxml .bx-tree cell {
   padding: 0;
@@ -58,11 +102,11 @@ CSS = """
   min-height: 25px;
   padding: 1px 7px;
   border-radius: 0;
-  background: #efeee9;
-  color: #43473f;
+  background: $header;
+  color: $chrome_text;
 }
 .branchxml .bx-tree header button:hover {
-  background: #e5e5de;
+  background: $hover;
 }
 .branchxml .bx-tree treeexpander {
   border-spacing: 0;
@@ -74,7 +118,7 @@ CSS = """
   padding: 0;
 }
 .branchxml .bx-tree indent {
-  color: #9a9f94;
+  color: $tree_line;
 }
 .branchxml .bx-tree indent.bx-trunk {
   background: image(currentColor) center / 1px 100% no-repeat;
@@ -95,20 +139,20 @@ CSS = """
   background: image(currentColor) center / 100% 1px no-repeat;
 }
 .branchxml .bx-tree treeexpander > expander {
-  color: #42493e;
+  color: $expander_icon;
   min-width: 9px;
   padding: 0 5px;
   -gtk-icon-size: 9px;
   -gtk-icon-source: -gtk-icontheme("list-add-symbolic");
   -gtk-icon-transform: none;
-  background: image(#fbfaf7) center / 9px 9px no-repeat,
-              image(#858c80) center / 11px 11px no-repeat,
-              image(#9a9f94) right center / 100% 1px no-repeat,
+  background: image($canvas) center / 9px 9px no-repeat,
+              image($expander_border) center / 11px 11px no-repeat,
+              image($tree_line) right center / 100% 1px no-repeat,
               none center bottom / 1px 50% no-repeat;
 }
 .branchxml .bx-tree treeexpander > expander:checked {
   -gtk-icon-source: -gtk-icontheme("list-remove-symbolic");
-  background-image: image(#fbfaf7), image(#858c80), image(#9a9f94), image(#9a9f94);
+  background-image: image($canvas), image($expander_border), image($tree_line), image($tree_line);
 }
 .branchxml .bx-tree treeexpander > expander.bx-root {
   background-size: 9px 9px, 11px 11px, 50% 1px, 1px 50%;
@@ -130,132 +174,132 @@ CSS = """
   min-width: 16px;
 }
 .branchxml .bx-tree .bx-mark-element {
-  color: #4a6b83;
+  color: $element_mark;
 }
 .branchxml .bx-tree .bx-mark-attribute {
-  color: #9b5941;
+  color: $attribute_mark;
 }
 .branchxml .bx-tree .bx-mark-special {
-  color: #547951;
+  color: $text_mark;
 }
 .branchxml .bx-tree .bx-icon-folder {
-  color: #996b24;
+  color: $folder;
 }
 .branchxml .bx-tree .bx-name-element {
-  color: #334d60;
+  color: $element;
 }
 .branchxml .bx-tree .bx-name-attribute {
-  color: #88452f;
+  color: $attribute;
 }
 .branchxml .bx-tree .bx-name-special {
-  color: #486748;
+  color: $text_node;
 }
 .branchxml .bx-tree .bx-value-string {
-  color: #395b43;
+  color: $value;
 }
 .branchxml .bx-tree .bx-value-number {
-  color: #3b5678;
+  color: $number;
 }
 .branchxml .bx-tree .bx-value-boolean {
-  color: #734d75;
+  color: $boolean;
 }
 .branchxml .bx-tree .bx-value-empty {
-  color: #63685e;
+  color: $empty;
 }
 .branchxml entry.bx-inline-editor {
   font-family: monospace;
   min-height: 22px;
   padding: 1px 5px;
-  border: 1px solid #51765c;
+  border: 1px solid $editor_border;
   border-radius: 2px;
-  background: #ffffff;
-  color: #262b25;
-  outline-color: #51765c;
+  background: $entry_bg;
+  color: $entry_text;
+  outline-color: $editor_border;
 }
 .branchxml entry.bx-inline-editor selection {
-  background-color: #cbdfcf;
-  color: #203627;
+  background-color: $selected_text_bg;
+  color: $selected_text_fg;
 }
 .branchxml headerbar.bx-title {
   min-height: 34px;
   padding: 2px 7px;
-  background: #f3f2ee;
-  color: #383c35;
+  background: $chrome;
+  color: $caption;
 }
 .branchxml headerbar.bx-title button {
   min-height: 27px;
   padding: 2px 7px;
 }
 .branchxml headerbar.bx-title label {
-  color: #383c35;
+  color: $caption;
 }
 .branchxml .branchxml-chrome {
-  background: #f3f2ee;
-  color: #43473f;
+  background: $chrome;
+  color: $chrome_text;
 }
 .branchxml .branchxml-chrome button {
   min-height: 25px;
   padding: 2px 6px;
   border-radius: 2px;
-  color: #43473f;
+  color: $chrome_text;
 }
 .branchxml .branchxml-chrome entry {
   min-height: 26px;
   padding: 2px 6px;
-  border-color: #b8bab1;
+  border-color: $entry_border;
   border-radius: 2px;
-  background: #ffffff;
-  color: #30332e;
+  background: $entry_bg;
+  color: $foreground;
 }
 .branchxml .branchxml-chrome separator {
-  background: #d8d9d1;
+  background: $separator;
 }
 .branchxml .branchxml-chrome popovermenubar {
   min-height: 26px;
-  background: #efeee9;
-  color: #43473f;
+  background: $header;
+  color: $chrome_text;
 }
 .branchxml .branchxml-chrome popovermenubar button {
   min-height: 25px;
-  color: #43473f;
+  color: $chrome_text;
 }
 .branchxml paned.bx-workspace > separator {
   min-width: 5px;
   min-height: 4px;
-  background: #d8d9d1;
+  background: $separator;
 }
 .branchxml paned.bx-workspace > separator:hover {
-  background: #99ab98;
+  background: $separator_hover;
 }
 .branchxml notebook.bx-pages > header,
 .branchxml notebook.bx-inspector > header {
   min-height: 25px;
-  background: #efeee9;
-  color: #43473f;
-  border-bottom: 1px solid #cdc7c2;
+  background: $header;
+  color: $chrome_text;
+  border-bottom: 1px solid $tab_line;
 }
 .branchxml notebook.bx-pages tab,
 .branchxml notebook.bx-inspector tab {
   min-height: 24px;
   padding: 2px 9px;
-  background: #efeee9;
-  color: #51564c;
-  box-shadow: inset 0 -1px #cdc7c2;
+  background: $header;
+  color: $tab_label;
+  box-shadow: inset 0 -1px $tab_line;
 }
 .branchxml notebook.bx-pages tab:checked,
 .branchxml notebook.bx-inspector tab:checked {
-  background: #fbfaf7;
-  color: #303c30;
-  box-shadow: inset 0 -2px #637f65;
+  background: $canvas;
+  color: $active_tab_label;
+  box-shadow: inset 0 -2px $active_tab_line;
 }
 .branchxml .bx-source text {
-  background-color: #fbfaf7;
-  color: #30332e;
+  background-color: $canvas;
+  color: $foreground;
 }
 .branchxml .bx-find {
   padding: 2px 6px;
-  background: #f3f2ee;
-  color: #43473f;
+  background: $chrome;
+  color: $chrome_text;
 }
 .branchxml .bx-find button,
 .branchxml .bx-find searchentry {
@@ -265,9 +309,23 @@ CSS = """
 .branchxml .bx-status {
   min-height: 22px;
   padding: 1px 7px;
-  border-top: 1px solid #d8d9d1;
-  background: #f3f2ee;
-  color: #53584f;
+  border-top: 1px solid $separator;
+  background: $chrome;
+  color: $status;
+}
+"""
+
+DARK_WIDGET_CSS = """
+.branchxml popover, .branchxml menu {
+  background: $header;
+  color: $foreground;
+}
+.branchxml popover modelbutton:hover, .branchxml menu menuitem:hover {
+  background: $selected_row;
+}
+.branchxml text selection, .branchxml entry selection {
+  background-color: $selected_text_bg;
+  color: $selected_text_fg;
 }
 """
 
@@ -304,19 +362,29 @@ def save_font_size(size):
     return size
 
 
-def install(display, font_size):
-    if display not in _PROVIDERS:
-        icons = Path(__file__).resolve().with_name("icons")
-        Gtk.IconTheme.get_for_display(display).add_search_path(str(icons if icons.is_dir() else icons.parent.parent / "icons"))
-        provider = Gtk.CssProvider()
-        Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        _PROVIDERS[display] = provider
-    document_font = f"""
+def document_css(font_size, dark=False):
+    colors = {name: pair[dark] for name, pair in COLORS.items()}
+    css = Template(CSS + DARK_WIDGET_CSS if dark else CSS).substitute(colors)
+    return css + f"""
     .branchxml .bx-tree .bx-name-cell, .branchxml .bx-tree .bx-value-cell,
     .branchxml .bx-inline-editor, .branchxml .bx-source, textview.bx-document-text {{
       font-size: {font_size}px;
     }}"""
-    _PROVIDERS[display].load_from_data((CSS + document_font).encode())
+
+
+def install(display, font_size, dark=False):
+    style = (font_size, dark)
+    if display in _PROVIDERS:
+        provider, previous = _PROVIDERS[display]
+        if previous == style:
+            return
+    else:
+        icons = Path(__file__).resolve().with_name("icons")
+        Gtk.IconTheme.get_for_display(display).add_search_path(str(icons if icons.is_dir() else icons.parent.parent / "icons"))
+        provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    provider.load_from_string(document_css(font_size, dark))
+    _PROVIDERS[display] = provider, style
 
 
 def name_cell():

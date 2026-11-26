@@ -54,12 +54,11 @@ class SourcePage(Gtk.Box):
         self.view.add_css_class("bx-source")
         self.buffer = self.view.get_buffer()
         self.buffer.set_enable_undo(False)
-        for name, color in (("element", "#2e669d"), ("attribute", "#ad3832"),
-                            ("string", "#187444"), ("number", "#27579a"), ("boolean", "#784390"),
-                            ("markup", "#685179"), ("comment", "#586974")):
-            self.buffer.create_tag(name, foreground=color)
-        self.hit = self.buffer.create_tag("match", background="#ffed9b", foreground="#302800")
-        self.current_hit = self.buffer.create_tag("current-match", background="#ffbd54", foreground="#251a08")
+        self.syntax_tags = {name: self.buffer.create_tag(name)
+                            for name in ("element", "attribute", "string", "number", "boolean", "markup", "comment")}
+        self.hit = self.buffer.create_tag("match")
+        self.current_hit = self.buffer.create_tag("current-match")
+        self.set_dark(False)
         self.xml = ""
         self.matches = []
         self.index = None
@@ -88,6 +87,20 @@ class SourcePage(Gtk.Box):
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.search_key)
         self.add_controller(keys)
+
+    def set_dark(self, dark):
+        syntax = {
+            "element": ("#2e669d", "#8eb7e0"), "attribute": ("#ad3832", "#e59c91"),
+            "string": ("#187444", "#8ed3a6"), "number": ("#27579a", "#9bbcf1"),
+            "boolean": ("#784390", "#d2a2ef"), "markup": ("#685179", "#c1a1dc"),
+            "comment": ("#586974", "#a5b4bd"),
+        }
+        for name, colors in syntax.items():
+            self.syntax_tags[name].set_property("foreground", colors[dark])
+        self.hit.set_property("background", "#6d5a25" if dark else "#ffed9b")
+        self.hit.set_property("foreground", "#fff2c6" if dark else "#302800")
+        self.current_hit.set_property("background", "#946328" if dark else "#ffbd54")
+        self.current_hit.set_property("foreground", "#fff1d2" if dark else "#251a08")
 
     def translate_ui(self):
         self.search_entry.set_placeholder_text(tr("Find in XML source (Ctrl+F)"))
