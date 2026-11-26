@@ -208,7 +208,16 @@ class InputTest(unittest.TestCase):
             win = RecipeWindow(self.app, Document(path))
             self.addCleanup(win.destroy)
             win.present()
-            wait_for(win.get_mapped)
+            win.lookup_action("source").activate(None)
+            source = win.source.view
+
+            def source_height():
+                return source.get_iter_location(win.source.buffer.get_start_iter()).height
+
+            wait_for(lambda: source.get_width() > 0 and source_height() > 0)
+            default_source_height = source_height()
+            win.lookup_action("tree").activate(None)
+            wait_for(lambda: win.view.get_mapped() and win.view.get_height() > 0)
             win.request_edit(70)
             wait_for(lambda: win.placed)
             row = win.active
@@ -228,12 +237,10 @@ class InputTest(unittest.TestCase):
             self.assertIs(win.active, row)
             win.edit_key(None, Gdk.KEY_Escape, 0, 0)
             win.lookup_action("source").activate(None)
-            source = win.source.view
-            wait_for(source.get_mapped)
-            source_width = width(source)
+            wait_for(lambda: source_height() > default_source_height)
             for _ in range(appearance.MIN_FONT_SIZE, appearance.MAX_FONT_SIZE):
                 win.lookup_action("font-decrease").activate(None)
-            wait_for(lambda: width(source) < source_width)
+            wait_for(lambda: source_height() < default_source_height)
             self.assertFalse(win.lookup_action("font-decrease").get_enabled())
             self.assertEqual(appearance.load_font_size(), appearance.MIN_FONT_SIZE)
             win.lookup_action("font-reset").activate(None)
