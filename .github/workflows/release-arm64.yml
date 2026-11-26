@@ -1,0 +1,50 @@
+name: Verify released .deb on ARM64
+run-name: Verify ${{ inputs.tag }} on Ubuntu ARM64
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag
+        type: string
+        required: true
+        default: v0.1.0
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check the native Ubuntu ARM64 environment
+        run: |
+          . /etc/os-release
+          echo "$PRETTY_NAME, kernel $(uname -m), dpkg $(dpkg --print-architecture)"
+          test "$(uname -m)" = aarch64
+          test "$(dpkg --print-architecture)" = arm64
+      - name: Download and verify the published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern 'branchxml_*_all.deb' --pattern 'branchxml-*.tar.gz' --pattern SHA256SUMS -- "$RELEASE_TAG"
+          sha256sum --check --strict SHA256SUMS
+          sha256sum ./branchxml_*_all.deb
+      - name: Install the released package and desktop test tools
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y ./branchxml_*_all.deb sway wtype dbus-daemon desktop-file-utils
+          dpkg-query -W branchxml libgtk-4-1
+          test "v$(dpkg-query -W -f='${Version}' branchxml)" = "$RELEASE_TAG"
+          /usr/bin/branchxml --version
+      - name: Launch the installed GUI, open XML and save edits on Wayland
+        run: |
+          source_dir="branchxml-${RELEASE_TAG#v}"
+          tar -xzf "$source_dir.tar.gz" --strip-components=1 "$source_dir/packaging/test-wayland.sh" "$source_dir/packaging/smoke_desktop.py"
+          launcher=/usr/share/applications/io.github.hqy2435662352.BranchXML.desktop
+          desktop-file-validate "$launcher"
+          packaging/test-wayland.sh /usr/bin/python3 packaging/smoke_desktop.py "$launcher"
