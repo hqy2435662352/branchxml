@@ -60,6 +60,21 @@ msgstr "跟随系统"
 msgid "Language"
 msgstr "语言"
 
+msgid "Font Size"
+msgstr "字体大小"
+
+msgid "Increase Font Size"
+msgstr "放大字体"
+
+msgid "Decrease Font Size"
+msgstr "缩小字体"
+
+msgid "Reset Font Size"
+msgstr "重置字体大小"
+
+msgid "Could not save the font size"
+msgstr "无法保存字体大小设置"
+
 msgid "Open (Ctrl+O)"
 msgstr "打开（Ctrl+O）"
 

@@ -58,7 +58,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
         super().__init__(application=app)
         self.set_default_size(920, 690)
         self.add_css_class("branchxml")
-        appearance.install(self.get_display())
+        self.font_size = appearance.load_font_size()
+        appearance.install(self.get_display(), self.font_size)
         self.set_icon_name(APP_ID)
         titlebar = Gtk.HeaderBar()
         titlebar.add_css_class("bx-title")
@@ -186,6 +187,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         workspace.set_shrink_start_child(False)
         self.inspector.set_size_request(-1, 108)
         self.chrome = Chrome(self, app)
+        self.update_font_actions()
         layout.append(self.chrome)
         layout.append(workspace)
         layout.append(statusbar)
@@ -206,6 +208,28 @@ class RecipeWindow(Gtk.ApplicationWindow):
         path = files[0].get_path()
         self.confirm_changes(lambda: self.open_path(path))
         return True
+
+    def adjust_font_size(self, step):
+        size = self.font_size + step if step else appearance.DEFAULT_FONT_SIZE
+        try:
+            size = appearance.save_font_size(size)
+        except (OSError, GLib.Error) as error:
+            self.show_error("Could not save the font size", error)
+            return
+        appearance.install(self.get_display(), size)
+        for window in self.get_application().get_windows():
+            if isinstance(window, RecipeWindow) and window.get_display() == self.get_display():
+                window.font_size = size
+                window.update_font_actions()
+                if window.active is not None:
+                    # Enlarging the bottom row can briefly put the editor outside the viewport.
+                    window.placed = False
+                    window.keep_branch_position(window.selection.get_selected_item())
+
+    def update_font_actions(self):
+        self.lookup_action("font-increase").set_enabled(self.font_size < appearance.MAX_FONT_SIZE)
+        self.lookup_action("font-decrease").set_enabled(self.font_size > appearance.MIN_FONT_SIZE)
+        self.lookup_action("font-reset").set_enabled(self.font_size != appearance.DEFAULT_FONT_SIZE)
 
     def change_language(self, action, value):
         choice = value.get_string()
@@ -569,6 +593,8 @@ class RecipeWindow(Gtk.ApplicationWindow):
             self.cancel_scroll_anchor()
             return
         _, bounds = row.compute_bounds(self.view)
+        if self.active is branch.get_item():
+            y = min(y, self.view.get_height() - bounds.get_height())
         delta = round(bounds.get_y() - y)
         adjustment = self.view.get_vadjustment()
         target = adjustment.get_value() + delta
@@ -702,6 +728,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
         dialog.add_button(tr("Apply"), Gtk.ResponseType.OK)
         dialog.set_default_size(540, 300)
         text = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, left_margin=8, top_margin=6)
+        text.add_css_class("bx-document-text")
         buffer = text.get_buffer()
         if adding:
             types = (("text", "Text"), ("cdata", "CDATA"), ("comment", "Comment"), ("pi", "Processing Instruction"))

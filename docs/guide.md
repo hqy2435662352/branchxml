@@ -78,6 +78,10 @@ Launch **BranchXML** from the applications menu, choose **Open With → BranchXM
 
 The interface follows your desktop language and falls back to English. Under **View → Language**, choose **System Default**, **English** or **简体中文**. The change takes effect immediately and is remembered next time. The system file chooser follows the desktop language.
 
+## Adjust the document font size
+
+Use **View → Font Size** to change the text in the tree, value editor and XML source. Press **Ctrl+=** or **Ctrl++** to enlarge it, **Ctrl+-** to reduce it, and **Ctrl+0** to return to the default. BranchXML remembers your choice the next time you open it.
+
 ## Run from source
 
 From the extracted source archive or a checkout, run `./install.py` to install under `~/.local`. To uninstall, run `./install.py --uninstall`. BranchXML uses Python, GTK 4.12 or later, PyGObject, Pygments and lxml. Ubuntu provides these through `gir1.2-gtk-4.0`, `python3-gi`, `python3-pygments` and `python3-lxml`. Use `--python /path/to/venv/bin/python` to select an interpreter with those dependencies.

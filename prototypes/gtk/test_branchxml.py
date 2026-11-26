@@ -6,6 +6,7 @@ import time
 import unittest
 
 from branchxml import Gdk, GLib, Gio, Gtk, RecipeWindow, Document
+import appearance
 import i18n
 from i18n import tr
 
@@ -197,6 +198,49 @@ class InputTest(unittest.TestCase):
             self.assertEqual(win.selection.get_selected_item().get_item().name, "a")
             win.navigation_key(None, Gdk.KEY_Right, 0, 0)
             self.assertIs(win.selection.get_selected_item().get_item(), attr)
+
+    def test_font_size_scales_document_and_keeps_pending_edit(self):
+        with (TemporaryDirectory() as temp,
+              patch.object(appearance, "font_size_file", return_value=Path(temp) / "font-size")):
+            path = Path(temp) / "recipe.xml"
+            original = ("<r>" + "<step>配方</step>" * 100 + "</r>").encode()
+            path.write_bytes(original)
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+            wait_for(win.get_mapped)
+            win.request_edit(70)
+            wait_for(lambda: win.placed)
+            row = win.active
+            label = win.cells[row]
+            editor = win.entry.get_delegate()
+
+            def width(widget):
+                return widget.create_pango_layout("配方 Recipe").get_pixel_size()[0]
+
+            label_width, editor_width = width(label), width(editor)
+            win.entry.set_text("暂未提交")
+            for _ in range(appearance.DEFAULT_FONT_SIZE, appearance.MAX_FONT_SIZE):
+                win.lookup_action("font-increase").activate(None)
+            wait_for(lambda: width(label) > label_width and width(editor) > editor_width)
+            self.assertFalse(win.lookup_action("font-increase").get_enabled())
+            self.assertEqual(win.entry.get_text(), "暂未提交")
+            self.assertIs(win.active, row)
+            win.edit_key(None, Gdk.KEY_Escape, 0, 0)
+            win.lookup_action("source").activate(None)
+            source = win.source.view
+            wait_for(source.get_mapped)
+            source_width = width(source)
+            for _ in range(appearance.MIN_FONT_SIZE, appearance.MAX_FONT_SIZE):
+                win.lookup_action("font-decrease").activate(None)
+            wait_for(lambda: width(source) < source_width)
+            self.assertFalse(win.lookup_action("font-decrease").get_enabled())
+            self.assertEqual(appearance.load_font_size(), appearance.MIN_FONT_SIZE)
+            win.lookup_action("font-reset").activate(None)
+            self.assertFalse(win.lookup_action("font-reset").get_enabled())
+            self.assertEqual(appearance.load_font_size(), appearance.DEFAULT_FONT_SIZE)
+            self.assertFalse(win.document.dirty)
+            self.assertEqual(win.document.render(), original)
 
     def test_language_menu_preserves_edits_tree_state_and_search(self):
         with (TemporaryDirectory() as temp,

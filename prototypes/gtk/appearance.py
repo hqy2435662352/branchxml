@@ -5,7 +5,7 @@ from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Pango
+from gi.repository import GLib, Gtk, Pango
 
 from i18n import tr
 
@@ -121,7 +121,6 @@ CSS = """
   min-height: 23px;
   padding: 1px 6px;
   font-family: monospace;
-  font-size: 12px;
 }
 .branchxml .bx-tree .bx-name-cell {
   padding-left: 2px;
@@ -164,6 +163,7 @@ CSS = """
   color: #63685e;
 }
 .branchxml entry.bx-inline-editor {
+  font-family: monospace;
   min-height: 22px;
   padding: 1px 5px;
   border: 1px solid #51765c;
@@ -232,6 +232,7 @@ CSS = """
   min-height: 25px;
   background: #efeee9;
   color: #43473f;
+  border-bottom: 1px solid #cdc7c2;
 }
 .branchxml notebook.bx-pages tab,
 .branchxml notebook.bx-inspector tab {
@@ -239,6 +240,7 @@ CSS = """
   padding: 2px 9px;
   background: #efeee9;
   color: #51564c;
+  box-shadow: inset 0 -1px #cdc7c2;
 }
 .branchxml notebook.bx-pages tab:checked,
 .branchxml notebook.bx-inspector tab:checked {
@@ -275,17 +277,46 @@ _PROVIDERS = {}
 VALUE_NUMBER = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$")
 
 
-def install(display):
-    if display in _PROVIDERS:
-        return
-    icons = Path(__file__).resolve().with_name("icons")
-    Gtk.IconTheme.get_for_display(display).add_search_path(str(icons if icons.is_dir() else icons.parent.parent / "icons"))
-    provider = Gtk.CssProvider()
-    provider.load_from_data(CSS.encode())
-    Gtk.StyleContext.add_provider_for_display(
-        display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-    )
-    _PROVIDERS[display] = provider
+DEFAULT_FONT_SIZE = 12
+MIN_FONT_SIZE = 9
+MAX_FONT_SIZE = 28
+
+
+def font_size_file():
+    return Path(GLib.get_user_config_dir()) / "branchxml" / "font-size"
+
+
+def load_font_size():
+    try:
+        size = int(font_size_file().read_text(encoding="ascii").strip())
+    except (OSError, UnicodeError, ValueError):
+        return DEFAULT_FONT_SIZE
+    return min(MAX_FONT_SIZE, max(MIN_FONT_SIZE, size))
+
+
+def save_font_size(size):
+    if isinstance(size, bool) or not isinstance(size, int):
+        raise TypeError("font size must be an integer")
+    size = min(MAX_FONT_SIZE, max(MIN_FONT_SIZE, size))
+    path = font_size_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    GLib.file_set_contents(str(path), f"{size}\n".encode("ascii"))
+    return size
+
+
+def install(display, font_size):
+    if display not in _PROVIDERS:
+        icons = Path(__file__).resolve().with_name("icons")
+        Gtk.IconTheme.get_for_display(display).add_search_path(str(icons if icons.is_dir() else icons.parent.parent / "icons"))
+        provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        _PROVIDERS[display] = provider
+    document_font = f"""
+    .branchxml .bx-tree .bx-name-cell, .branchxml .bx-tree .bx-value-cell,
+    .branchxml .bx-inline-editor, .branchxml .bx-source, textview.bx-document-text {{
+      font-size: {font_size}px;
+    }}"""
+    _PROVIDERS[display].load_from_data((CSS + document_font).encode())
 
 
 def name_cell():

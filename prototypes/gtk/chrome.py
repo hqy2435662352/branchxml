@@ -21,6 +21,9 @@ class Chrome(Gtk.Box):
                 ("locate", window.corresponding_node),
                 ("changes", window.compare), ("compare", window.choose_comparison),
                 ("clear-schema", window.remove_schema),
+                ("font-increase", lambda: window.adjust_font_size(1)),
+                ("font-decrease", lambda: window.adjust_font_size(-1)),
+                ("font-reset", lambda: window.adjust_font_size(0)),
                 ("tree", lambda: window.pages.set_current_page(0)),
                 ("source", lambda: window.pages.set_current_page(1)),
                 ("inspector", lambda: window.inspector.set_visible(not window.inspector.get_visible()))):
@@ -31,6 +34,10 @@ class Chrome(Gtk.Box):
         app.set_accels_for_action("win.find", ["<Control>f", "<Control>i"])
         app.set_accels_for_action("win.replace", ["<Control>h"])
         app.set_accels_for_action("win.locate", ["<Control>j"])
+        app.set_accels_for_action("win.font-increase", [
+            "<Control>plus", "<Control>equal", "<Control><Shift>equal", "<Control>KP_Add"])
+        app.set_accels_for_action("win.font-decrease", ["<Control>minus", "<Control>KP_Subtract"])
+        app.set_accels_for_action("win.font-reset", ["<Control>0", "<Control>KP_0"])
 
         self.menu_bar = Gtk.PopoverMenuBar.new_from_model(Gio.Menu())
         self.append(self.menu_bar)
@@ -73,6 +80,11 @@ class Chrome(Gtk.Box):
             for label, name in commands:
                 menu.append(tr(label), "win." + name)
             if title == "View":
+                fonts = Gio.Menu()
+                for label, name in (("Increase Font Size", "font-increase"), ("Decrease Font Size", "font-decrease"),
+                                    ("Reset Font Size", "font-reset")):
+                    fonts.append(tr(label), "win." + name)
+                menu.append_submenu(tr("Font Size"), fonts)
                 languages = Gio.Menu()
                 for choice, label in CHOICES.items():
                     languages.append(tr(label) if choice == "system" else label, "win.language::" + choice)

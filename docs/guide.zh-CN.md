@@ -78,6 +78,10 @@ Ctrl+Z 撤销，Ctrl+Shift+Z 或 Ctrl+Y 重做。连续用 Tab 改几个值时�
 
 界面默认跟随桌面语言，找不到匹配时使用英语。在 **视图 → 语言**（**View → Language**）里可选择 **跟随系统**、**English** 或 **简体中文**，立即生效，下次启动也会记住。系统文件选择器跟随桌面语言。
 
+## 调整文档字号
+
+在 **视图 → 字体大小** 中可以调整树视图、值编辑框和 XML 源码的字号。按 **Ctrl+=** 或 **Ctrl++** 放大，**Ctrl+-** 缩小，**Ctrl+0** 恢复默认字号。下次打开 BranchXML 时会沿用上次的选择。
+
 ## 从源码运行
 
 在解压后的源码目录或仓库根目录运行 `./install.py`，默认安装到 `~/.local`。卸载用 `./install.py --uninstall`。BranchXML 使用 Python、GTK 4.12 或更高版本、PyGObject、Pygments 和 lxml。Ubuntu 对应的软件包是 `gir1.2-gtk-4.0`、`python3-gi`、`python3-pygments` 和 `python3-lxml`。依赖装在虚拟环境时，可用 `--python /路径/venv/bin/python` 指定解释器。

@@ -51,6 +51,7 @@ def show_comparison(parent, before, after, old_name, new_name):
                          margin_top=8, margin_bottom=8, margin_start=10))
     if lines:
         view = Gtk.TextView(editable=False, monospace=True, left_margin=10, top_margin=6)
+        view.add_css_class("bx-document-text")
         buf = view.get_buffer()
         buf.create_tag("add", background="#dcf4df", foreground="#174f2b")
         buf.create_tag("remove", background="#fbe1df", foreground="#742822")
