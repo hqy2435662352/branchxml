@@ -21,7 +21,9 @@ Close the comparison and press **Ctrl+Z**. Saving now restores the working copy 
 
 ## Working in the tree
 
-Right-click a node to duplicate, move or delete it with its children, or drag an element to another parent. Icons and colors distinguish node types. A row stays under the pointer when you collapse it, even at the end of a document. Reopening a parent restores each descendant’s previous expansion state.
+Follow the branch lines to see which nodes share a parent. Click **+** to expand a branch and **−** to collapse it. The row stays under the pointer, even at the end of the document. Reopening a parent restores each descendant’s previous expansion state.
+
+Right-click a node to duplicate, move or delete it with its children, or drag an element to another parent. Icons and colors distinguish node types.
 
 ### Keyboard shortcuts and node commands
 

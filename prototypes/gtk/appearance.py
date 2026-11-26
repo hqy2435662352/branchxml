@@ -1,4 +1,4 @@
-"""Compact, light XML tree styling for the GTK prototype."""
+"""Appearance and hierarchy guides for the GTK editor."""
 
 import re
 from pathlib import Path
@@ -11,12 +11,12 @@ from i18n import tr
 
 
 CSS = """
-.branchxml .bx-drop-before { box-shadow: inset 0 2px #2673bb; }
-.branchxml .bx-drop-after { box-shadow: inset 0 -2px #2673bb; }
-.branchxml .bx-drop-inside { background-color: #c5def5; }
+.branchxml .bx-drop-before { box-shadow: inset 0 2px #477056; }
+.branchxml .bx-drop-after { box-shadow: inset 0 -2px #477056; }
+.branchxml .bx-drop-inside { background-color: #d3e4d5; }
 .branchxml {
-  background: #ffffff;
-  color: #202632;
+  background: #fbfaf7;
+  color: #30332e;
 }
 .branchxml .bx-tree,
 .branchxml .bx-tree listview,
@@ -25,8 +25,8 @@ CSS = """
 .branchxml notebook.bx-pages,
 .branchxml notebook.bx-inspector,
 .branchxml .bx-inspector grid {
-  background: #ffffff;
-  color: #202632;
+  background: #fbfaf7;
+  color: #30332e;
 }
 .branchxml .bx-tree {
   font-family: monospace;
@@ -35,32 +35,21 @@ CSS = """
 .branchxml .bx-tree row {
   min-height: 24px;
   padding: 0;
-  color: #202632;
-  border-bottom: 1px solid #e8edf2;
+  background: #fbfaf7;
+  border: none;
 }
-.branchxml .bx-tree row:nth-child(even) {
-  background: #f1f7fc;
+.branchxml .bx-tree row,
+.branchxml .bx-tree cell,
+.branchxml entry {
+  outline-color: #57735d;
 }
 .branchxml .bx-tree row:selected {
-  background: #c5def5;
+  background: #e8ede5;
 }
 .branchxml .bx-tree row:selected:focus,
 .branchxml .bx-tree row:selected:focus-within {
-  background: #2673bb;
-}
-.branchxml .bx-tree row:selected label {
-  color: #17334f;
-}
-.branchxml .bx-tree row:selected:focus label,
-.branchxml .bx-tree row:selected:focus-within label {
-  color: #ffffff;
-}
-.branchxml .bx-tree row:selected image {
-  color: #7c570f;
-}
-.branchxml .bx-tree row:selected:focus image,
-.branchxml .bx-tree row:selected:focus-within image {
-  color: #ffffff;
+  background: #dbe8db;
+  box-shadow: inset 2px 0 #52715b;
 }
 .branchxml .bx-tree cell {
   padding: 0;
@@ -69,15 +58,67 @@ CSS = """
   min-height: 25px;
   padding: 1px 7px;
   border-radius: 0;
-  background: #eaf2fa;
-  color: #234568;
+  background: #efeee9;
+  color: #43473f;
 }
 .branchxml .bx-tree header button:hover {
-  background: #d7e8f6;
+  background: #e5e5de;
+}
+.branchxml .bx-tree treeexpander {
+  border-spacing: 0;
+}
+.branchxml .bx-tree treeexpander > indent,
+.branchxml .bx-tree treeexpander > expander {
+  min-width: 19px;
+  margin: 0;
+  padding: 0;
+}
+.branchxml .bx-tree indent {
+  color: #9a9f94;
+}
+.branchxml .bx-tree indent.bx-trunk {
+  background: image(currentColor) center / 1px 100% no-repeat;
+}
+.branchxml .bx-tree indent.bx-fork,
+.branchxml .bx-tree indent.bx-elbow {
+  background: image(currentColor) center top / 1px 100% no-repeat,
+              image(currentColor) right center / 50% 1px no-repeat;
+}
+.branchxml .bx-tree indent.bx-elbow {
+  background-size: 1px 50%, 50% 1px;
+}
+.branchxml .bx-tree indent.bx-fork:dir(rtl),
+.branchxml .bx-tree indent.bx-elbow:dir(rtl) {
+  background-position: center top, left center;
+}
+.branchxml .bx-tree indent.bx-link {
+  background: image(currentColor) center / 100% 1px no-repeat;
+}
+.branchxml .bx-tree treeexpander > expander {
+  color: #42493e;
+  min-width: 9px;
+  padding: 0 5px;
+  -gtk-icon-size: 9px;
+  -gtk-icon-source: -gtk-icontheme("list-add-symbolic");
+  -gtk-icon-transform: none;
+  background: image(#fbfaf7) center / 9px 9px no-repeat,
+              image(#858c80) center / 11px 11px no-repeat,
+              image(#9a9f94) right center / 100% 1px no-repeat,
+              none center bottom / 1px 50% no-repeat;
+}
+.branchxml .bx-tree treeexpander > expander:checked {
+  -gtk-icon-source: -gtk-icontheme("list-remove-symbolic");
+  background-image: image(#fbfaf7), image(#858c80), image(#9a9f94), image(#9a9f94);
+}
+.branchxml .bx-tree treeexpander > expander.bx-root {
+  background-size: 9px 9px, 11px 11px, 50% 1px, 1px 50%;
+}
+.branchxml .bx-tree treeexpander > expander.bx-root:dir(rtl) {
+  background-position: center, center, left center, center bottom;
 }
 .branchxml .bx-tree .bx-name-cell,
 .branchxml .bx-tree .bx-value-cell {
-  min-height: 24px;
+  min-height: 23px;
   padding: 1px 6px;
   font-family: monospace;
   font-size: 12px;
@@ -87,125 +128,132 @@ CSS = """
 }
 .branchxml .bx-tree .bx-row-mark {
   font-size: 10px;
+  min-width: 16px;
 }
 .branchxml .bx-tree .bx-mark-element {
-  color: #3473ae;
+  color: #4a6b83;
 }
 .branchxml .bx-tree .bx-mark-attribute {
-  color: #c44740;
+  color: #9b5941;
 }
 .branchxml .bx-tree .bx-mark-special {
-  color: #218447;
+  color: #547951;
 }
 .branchxml .bx-tree .bx-icon-folder {
-  color: #c58a16;
+  color: #996b24;
 }
 .branchxml .bx-tree .bx-name-element {
-  color: #2e669d;
+  color: #334d60;
 }
 .branchxml .bx-tree .bx-name-attribute {
-  color: #bd403a;
+  color: #88452f;
 }
 .branchxml .bx-tree .bx-name-special {
-  color: #187744;
+  color: #486748;
 }
 .branchxml .bx-tree .bx-value-string {
-  color: #187444;
+  color: #395b43;
 }
 .branchxml .bx-tree .bx-value-number {
-  color: #2769aa;
+  color: #3b5678;
 }
 .branchxml .bx-tree .bx-value-boolean {
-  color: #8153a5;
+  color: #734d75;
 }
 .branchxml .bx-tree .bx-value-empty {
-  color: #66717e;
+  color: #63685e;
 }
 .branchxml entry.bx-inline-editor {
   min-height: 22px;
   padding: 1px 5px;
-  border: 1px solid #2b75b8;
+  border: 1px solid #51765c;
   border-radius: 2px;
   background: #ffffff;
-  color: #17202b;
+  color: #262b25;
+  outline-color: #51765c;
+}
+.branchxml entry.bx-inline-editor selection {
+  background-color: #cbdfcf;
+  color: #203627;
 }
 .branchxml headerbar.bx-title {
   min-height: 34px;
   padding: 2px 7px;
-  background: #f2f5f8;
-  color: #25384b;
+  background: #f3f2ee;
+  color: #383c35;
 }
 .branchxml headerbar.bx-title button {
   min-height: 27px;
   padding: 2px 7px;
 }
 .branchxml headerbar.bx-title label {
-  color: #25384b;
+  color: #383c35;
 }
 .branchxml .branchxml-chrome {
-  background: #f2f5f8;
-  color: #304154;
+  background: #f3f2ee;
+  color: #43473f;
 }
 .branchxml .branchxml-chrome button {
   min-height: 25px;
   padding: 2px 6px;
   border-radius: 2px;
-  color: #304154;
+  color: #43473f;
 }
 .branchxml .branchxml-chrome entry {
   min-height: 26px;
   padding: 2px 6px;
-  border-color: #aebdca;
+  border-color: #b8bab1;
   border-radius: 2px;
   background: #ffffff;
-  color: #1d2935;
+  color: #30332e;
 }
 .branchxml .branchxml-chrome separator {
-  background: #d7e0e8;
+  background: #d8d9d1;
 }
 .branchxml .branchxml-chrome popovermenubar {
   min-height: 26px;
-  background: #eaf2fa;
-  color: #304154;
+  background: #efeee9;
+  color: #43473f;
 }
 .branchxml .branchxml-chrome popovermenubar button {
   min-height: 25px;
-  color: #304154;
+  color: #43473f;
 }
 .branchxml paned.bx-workspace > separator {
   min-width: 5px;
   min-height: 4px;
-  background: #d8e0e8;
+  background: #d8d9d1;
 }
 .branchxml paned.bx-workspace > separator:hover {
-  background: #8bb5dd;
+  background: #99ab98;
 }
 .branchxml notebook.bx-pages > header,
 .branchxml notebook.bx-inspector > header {
   min-height: 25px;
-  background: #eaf2fa;
-  color: #263c50;
+  background: #efeee9;
+  color: #43473f;
 }
 .branchxml notebook.bx-pages tab,
 .branchxml notebook.bx-inspector tab {
   min-height: 24px;
   padding: 2px 9px;
-  background: #eaf2fa;
-  color: #344c62;
+  background: #efeee9;
+  color: #51564c;
 }
 .branchxml notebook.bx-pages tab:checked,
 .branchxml notebook.bx-inspector tab:checked {
-  background: #ffffff;
-  color: #1b3b59;
+  background: #fbfaf7;
+  color: #303c30;
+  box-shadow: inset 0 -2px #637f65;
 }
 .branchxml .bx-source text {
-  background-color: #ffffff;
-  color: #202632;
+  background-color: #fbfaf7;
+  color: #30332e;
 }
 .branchxml .bx-find {
   padding: 2px 6px;
-  background: #f2f5f8;
-  color: #304154;
+  background: #f3f2ee;
+  color: #43473f;
 }
 .branchxml .bx-find button,
 .branchxml .bx-find searchentry {
@@ -215,9 +263,9 @@ CSS = """
 .branchxml .bx-status {
   min-height: 22px;
   padding: 1px 7px;
-  border-top: 1px solid #d8e0e8;
-  background: #f2f6fa;
-  color: #435365;
+  border-top: 1px solid #d8d9d1;
+  background: #f3f2ee;
+  color: #53584f;
 }
 """
 
@@ -251,6 +299,22 @@ def name_cell():
     box.append(folder)
     box.append(label)
     return box
+
+
+def bind_tree_row(expander, row):
+    expander.set_list_row(row)
+    # GTK lays out one indent per ancestor, then a toggle or a spacer for the node.
+    slot = expander.get_child().get_prev_sibling()
+    slot.set_css_classes(["bx-root" if row.get_depth() == 0 else "bx-link"])
+    branch = row
+    while (parent := branch.get_parent()) is not None:
+        slot = slot.get_prev_sibling()
+        has_next = branch.get_item().path[-1] + 1 < parent.get_item().children.get_n_items()
+        if branch is row:
+            slot.set_css_classes(["bx-fork" if has_next else "bx-elbow"])
+        else:
+            slot.set_css_classes(["bx-trunk"] if has_next else [])
+        branch = parent
 
 
 def set_name(box, row):

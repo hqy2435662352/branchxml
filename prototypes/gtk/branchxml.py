@@ -920,7 +920,7 @@ class RecipeWindow(Gtk.ApplicationWindow):
     def bind_name(self, factory, item):
         tree_row = item.get_item()
         expander = item.get_child()
-        expander.set_list_row(tree_row)
+        appearance.bind_tree_row(expander, tree_row)
         cell, row = expander.get_child(), tree_row.get_item()
         self.name_cells[cell] = row
         appearance.set_name(cell, row)

@@ -368,6 +368,35 @@ class InputTest(unittest.TestCase):
             self.assertEqual(win.inspector.result[1].get_text(), invalid.name)
             self.assertEqual(win.inspector.result[2].get_text(), "2")
 
+    def test_tree_guides_follow_siblings_after_reordering(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "tree.xml"
+            path.write_text("<root><first><a/><b/></first><last><c/></last></root>")
+            win = RecipeWindow(self.app, Document(path))
+            self.addCleanup(win.destroy)
+            win.present()
+
+            def guides(name):
+                wait_for(lambda: any(row.name == name for row in win.name_cells.values()))
+                cell = next(cell for cell, row in win.name_cells.items() if row.name == name)
+                slot = cell.get_parent().get_first_child()
+                result = []
+                while slot != cell:
+                    result.append(next((c for c in slot.get_css_classes() if c.startswith("bx-")), None))
+                    slot = slot.get_next_sibling()
+                return result
+
+            self.assertEqual(guides("root"), ["bx-root"])
+            self.assertEqual(guides("a"), ["bx-trunk", "bx-fork", "bx-link"])
+            self.assertEqual(guides("b"), ["bx-trunk", "bx-elbow", "bx-link"])
+            self.assertEqual(guides("c"), [None, "bx-elbow", "bx-link"])
+            win.reveal(win.document.roots.get_item(0).children.get_item(1))
+            win.node_command("move-up")
+            self.assertEqual(guides("c"), ["bx-trunk", "bx-elbow", "bx-link"])
+            self.assertEqual(guides("last"), ["bx-fork", "bx-link"])
+            win.history(False)
+            self.assertEqual(guides("c"), [None, "bx-elbow", "bx-link"])
+
     def test_nested_expansion_survives_closing_ancestors(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "recipe.xml"
