@@ -520,6 +520,7 @@ class InputTest(unittest.TestCase):
                 self.addCleanup(win.destroy)
                 params = win.rows.get_child_row(0).get_child_row(200)
                 params.set_expanded(True)
+                win.set_resizable(False)  # Measure the fold without a simultaneous compositor resize.
                 win.present()
                 scroll = win.view.get_vadjustment()
                 wait_for(lambda: scroll.get_page_size() > 0 and scroll.get_upper() > scroll.get_page_size())
