@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=BranchXML
+GenericName=XML Editor
+GenericName[zh_CN]=XML 编辑器
+Comment=Browse XML trees and edit node values
+Comment[zh_CN]=浏览 XML 节点树并编辑值
+Exec=@COMMAND@ %f
+Icon=@APP_ID@
+StartupWMClass=@APP_ID@
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=application/xml;text/xml;application/xslt+xml;
+Keywords=XML;XPath;XSD;Tree;Editor;

@@ -1,0 +1,30 @@
+name: Test and package
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 python3-pygments python3-lxml sway wtype dbus-daemon gettext desktop-file-utils
+      - name: Test the XML model and GTK on Wayland
+        run: |
+          msgfmt --check -o /tmp/branchxml.mo prototypes/gtk/locale/zh_CN/LC_MESSAGES/branchxml.po
+          cmp /tmp/branchxml.mo prototypes/gtk/locale/zh_CN/LC_MESSAGES/branchxml.mo
+          packaging/test-wayland.sh
+      - name: Install and check the release
+        run: |
+          python3 packaging/build_release.py
+          (cd dist && sha256sum -c SHA256SUMS)
+          sudo apt-get install -y ./dist/*.deb
+          branchxml --version
+          desktop-file-validate /usr/share/applications/io.github.hqy2435662352.BranchXML.desktop
+          packaging/test-wayland.sh /usr/bin/python3 packaging/smoke_desktop.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branchxml-ubuntu
+          path: dist/

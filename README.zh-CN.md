@@ -6,14 +6,18 @@ BranchXML 是一款面向 Ubuntu 的桌面 XML 阅读与编辑器，使用 Pytho
 
 ![树视图中正在编辑第二个步骤的 summary，底部显示该节点的 XML 路径。](docs/screenshots/tree-editing.png)
 
-## 快速开始
+## 安装与打开文件
 
-需要系统 Python 3、GTK 4.12 或更高版本、PyGObject 和 Pygments。Ubuntu 上对应的运行依赖是 `python3`、`gir1.2-gtk-4.0`、`python3-gi` 和 `python3-pygments`。
+已发布版本的 Ubuntu 安装包和源码包可在 [GitHub Releases](https://github.com/hqy2435662352/branchxml/releases) 获取。
 
-在仓库根目录运行以下命令，即可打开随附的花草茶配方。
+在 Ubuntu 24.04 LTS 和 26.04 LTS 上，可以从下载目录运行 `sudo apt install ./branchxml_0.1.0_all.deb`，由系统安装应用及运行依赖。安装后，在文件管理器右键 XML，选择 **打开方式 → BranchXML**，也可以将文件拖进窗口，或运行 `branchxml "我的配方.xml"`。从应用菜单启动会打开未命名文档，**Ctrl+N** 可以新建，首次保存时选择路径。
+
+也可以从源码压缩包或仓库运行 `./install.py`，只安装到当前账户的 `~/.local`。卸载用 `./install.py --uninstall`。解释器需要 GTK 4.12 或更高版本、PyGObject、Pygments 和 lxml。Ubuntu 对应的软件包是 `gir1.2-gtk-4.0`、`python3-gi`、`python3-pygments` 和 `python3-lxml`。如果依赖已装在虚拟环境里，可用 `--python /路径/venv/bin/python` 指定解释器。
+
+在源码目录运行以下命令，可直接试用随附的花草茶配方。
 
 ```sh
-/usr/bin/python3 prototypes/gtk/branchxml.py
+/usr/bin/python3 prototypes/gtk/branchxml.py examples/demo.xml
 ```
 
 编辑器默认跟随桌面的首选语言，找不到匹配时使用英语。在 **视图 → 语言**（**View → Language**）中可选择 **跟随系统**、**English** 或 **简体中文**，切换立即生效，下次启动也会记住。系统文件选择器使用桌面的语言设置。
@@ -33,25 +37,37 @@ BranchXML 是一款面向 Ubuntu 的桌面 XML 阅读与编辑器，使用 Pytho
 | 打开节点菜单 | 右键点击节点名称或同行的值。键盘操作可用 Shift+F10 或菜单键。 |
 | 新增节点 | Insert 新增同级元素或属性。Ctrl+Insert 添加子元素，Alt+Insert 添加属性。输入名称后按 Enter 确认。 |
 | 复制或删除 | Ctrl+D 在原节点后复制整棵子树。Delete 删除选中节点及其子节点。 |
-| 调整顺序 | Alt+↑ / Alt+↓ 与上一个或下一个同级节点交换，子树随元素一起移动。 |
+| 移动子树 | Alt+↑ / Alt+↓ 交换同级节点。将元素名拖到另一元素的中间可移为子节点，拖到行的上边缘或下边缘则插入其前后。整次移动算一步撤销。 |
+| 在树里定位 | → 展开分支或选中首个子节点，← 收起分支或返回父节点。Ctrl+J 在源码里定位选中行，也可以从源码光标跳回树中。 |
+| 重命名与多行编辑 | Shift+F2 重命名元素或属性。Shift+Enter 打开多行值编辑器，Ctrl+Enter 应用。 |
+| 剪切、复制和粘贴节点 | 在树中使用 Ctrl+X、Ctrl+C、Ctrl+V。选中元素时粘贴为子节点，Ctrl+Shift+V 粘贴到所选节点之后。进入值输入框后，这些键操作选中的文字。 |
+| 新增各类内容 | 右键元素，选择「新增文本、注释或处理指令…」，可添加文本、CDATA、注释或处理指令。 |
 
 复制元素会沿用其全部属性值，包括配方中的序号。复制单个属性时会生成可用的新名称。移动元素会保留原序号。普通文本节点移到一起后，XML 会把相邻的文本读成一个节点。
 
 ## 源码与检查
 
+在树中按 **Ctrl+F** 或 **Ctrl+I** 查找节点名称和值。收起的分支也能搜到，命中时会展开对应路径。F3 和 Shift+F3 在命中行间切换，Esc 回到选中行，接着按 F2 就能改值。**Ctrl+H** 可替换当前值中的匹配文字，也可一次替换全部匹配值。全部替换算一步撤销。可选区分大小写和正则表达式，正则替换支持 `\1` 等捕获组。
+
+从 **编辑 → 使用 XPath 查找…** 输入 XPath 1.0 表达式，例如 `//step[@minutes='5']/@minutes`，按 Enter 定位到对应节点。`count(//step)` 等表达式直接显示计算结果。可使用文档中的前缀。默认命名空间使用 `default`，也可以手动填写 `r=urn:recipes` 一类的绑定。
+
 「XML 源码」页显示当前文档的只读源码，包括已提交、尚未保存的修改。元素名、属性名、字符串、数字和布尔值分别着色。
 
-从任一视图按 Ctrl+F 即可查找中文、标签名或属性值。查找按字面匹配，忽略英文字母大小写。所有匹配项都会高亮，搜索框旁显示当前是第几项及总数。Enter 或 F3 跳到下一处，Shift+F3 回到上一处，到达首尾会循环。在搜索框按 Esc 可清空查找并返回源码。
+在源码页按 Ctrl+F 会查找显示的 XML。查找按字面匹配，忽略英文字母大小写。所有匹配项都会高亮，搜索框旁显示当前是第几项及总数。Enter 或 F3 跳到下一处，Shift+F3 回到上一处，到达首尾会循环。在搜索框按 Esc 可清空查找并返回源码。
 
 ![在 XML 源码中查找 minutes。两处匹配都已高亮，当前选中第二处。](docs/screenshots/source-search.png)
 
 下方的「检查 XML」检查语法和命名空间，解析器提供位置时会显示错误行列。「节点信息」显示选中节点的路径和值或子项数量。可以拖动分隔线调整节点栏宽度和检查面板高度。
+
+通过 **视图 → 使用 XML Schema 校验…** 可为当前文档选择本地 XSD 1.0。每次提交编辑后会刷新检查结果，点击行号跳到源码。模式文件可以引用其目录及子目录中的本地文件。打开另一份文档时会清除模式。模式错误供诊断使用，保存时要求 XML 格式正确。
 
 ## 保存与撤销
 
 Ctrl+S 保存，Ctrl+Shift+S 另存为，保存时会一并提交正在编辑的值。写入前会校验 XML。若原文件已被其他程序修改，编辑器会提示另存为。另存为后继续编辑新文件。打开其他文件或关闭窗口时，可以保存、放弃修改或取消操作。
 
 只改一个值时，其他位置的缩进、属性引号、实体写法、CDATA、BOM 和换行都会保留。新增、复制、移动和删除节点也只改动相应的 XML 片段。给自闭合元素添加文本时，该元素会展开为一对标签。已验证 UTF-8 和 UTF-16 文件的读写。打开含 DTD 的文档时会提示错误。
+
+打开 **视图 → 查看未保存的改动**，可以在保存前逐行查看变化。**与另一个 XML 文件比较…** 可对照本地另一份文件，区分逐字节相同、编码不同和行尾不同的情况。
 
 Ctrl+Z 撤销，Ctrl+Shift+Z 或 Ctrl+Y 重做。连续用 Tab 改几个值时，每个实际改动的字段算一步。新增、复制、移动和删除节点也都可以逐步撤销。正在输入时，先撤销输入框里的文字。保存后仍可撤销，打开另一个文件时重新开始记录。
 
@@ -64,3 +80,7 @@ Ctrl+Z 撤销，Ctrl+Shift+Z 或 Ctrl+Y 重做。连续用 Tab 改几个值时�
 ```
 
 只检查文档读写和撤销逻辑时，可以运行 `/usr/bin/python3 prototypes/gtk/test_document.py`。中文输入另在 Wayland 会话中用 Fcitx 4 和搜狗拼音验证过连续选词、Tab 切换和 Esc 取消。
+
+安装 Sway 和 D-Bus 后，运行 `packaging/test-wayland.sh` 可在独立的 Wayland 会话里测试。运行 `/usr/bin/python3 packaging/build_release.py` 可在 `dist/` 生成 Debian 安装包、可按用户安装的源码包及 SHA-256 校验文件。
+
+BranchXML 采用 [MIT 许可证](LICENSE)，各版本的改动见[发布说明](CHANGELOG.md)。
