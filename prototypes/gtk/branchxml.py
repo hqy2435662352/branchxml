@@ -175,6 +175,13 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.pages.append_page(self.tree_page, Gtk.Label())
         self.source = SourcePage()
         self.pages.append_page(self.source, Gtk.Label())
+        for page in (self.tree_page, self.source):
+            wheel = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+            wheel.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            wheel.zoom_remainder = 0.0
+            wheel.connect("scroll", self.scroll_font_size)
+            wheel.connect("scroll-end", lambda controller: setattr(controller, "zoom_remainder", 0.0))
+            page.add_controller(wheel)
         self.pages.connect("switch-page", self.switch_page)
 
         self.schema_timer = None
@@ -209,8 +216,27 @@ class RecipeWindow(Gtk.ApplicationWindow):
         self.confirm_changes(lambda: self.open_path(path))
         return True
 
+    def scroll_font_size(self, wheel, dx, dy):
+        if not (wheel.get_current_event_state() & Gdk.ModifierType.CONTROL_MASK):
+            wheel.zoom_remainder = 0.0
+            return False
+        if not dy:
+            return False
+        # Wheel deltas are in notches. GTK uses ten surface pixels per notch on touchpads.
+        delta = -dy / 10 if wheel.get_unit() == Gdk.ScrollUnit.SURFACE else -dy
+        if delta * wheel.zoom_remainder < 0:
+            wheel.zoom_remainder = 0.0
+        wheel.zoom_remainder += delta
+        steps = int(wheel.zoom_remainder)
+        if steps:
+            wheel.zoom_remainder -= steps
+            self.adjust_font_size(steps)
+        return True
+
     def adjust_font_size(self, step):
         size = self.font_size + step if step else appearance.DEFAULT_FONT_SIZE
+        if min(appearance.MAX_FONT_SIZE, max(appearance.MIN_FONT_SIZE, size)) == self.font_size:
+            return
         try:
             size = appearance.save_font_size(size)
         except (OSError, GLib.Error) as error:

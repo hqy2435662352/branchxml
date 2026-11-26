@@ -199,6 +199,29 @@ class InputTest(unittest.TestCase):
             win.navigation_key(None, Gdk.KEY_Right, 0, 0)
             self.assertIs(win.selection.get_selected_item().get_item(), attr)
 
+    def test_ctrl_wheel_changes_shared_font_size(self):
+        with (TemporaryDirectory() as temp,
+              patch.object(appearance, "font_size_file", return_value=Path(temp) / "font-size")):
+            win = RecipeWindow(self.app, Document())
+            self.addCleanup(win.destroy)
+            for page, unit, notch in ((win.tree_page, Gdk.ScrollUnit.WHEEL, 1),
+                                      (win.source, Gdk.ScrollUnit.SURFACE, 10)):
+                wheel = next(c for c in page.observe_controllers() if isinstance(c, Gtk.EventControllerScroll))
+                self.assertEqual(wheel.get_propagation_phase(), Gtk.PropagationPhase.CAPTURE)
+                self.assertFalse(wheel.emit("scroll", 0.0, -1.0))
+                with (patch.object(wheel, "get_current_event_state", return_value=Gdk.ModifierType.CONTROL_MASK),
+                      patch.object(wheel, "get_unit", return_value=unit)):
+                    self.assertFalse(wheel.emit("scroll", 1.0, 0.0))
+                    wheel.emit("scroll", 0.0, -notch / 2)
+                    wheel.emit("scroll-end")
+                    for expected in (12, 13):
+                        self.assertTrue(wheel.emit("scroll", 0.0, -notch / 2))
+                        self.assertEqual(win.font_size, expected)
+                    self.assertTrue(wheel.emit("scroll", 0.0, 3 * notch))
+                    self.assertEqual(appearance.load_font_size(), 10)
+                    self.assertTrue(wheel.emit("scroll", 0.0, -2 * notch))
+                    self.assertEqual(win.font_size, 12)
+
     def test_font_size_scales_document_and_keeps_pending_edit(self):
         with (TemporaryDirectory() as temp,
               patch.object(appearance, "font_size_file", return_value=Path(temp) / "font-size")):

@@ -80,7 +80,7 @@ The interface follows your desktop language and falls back to English. Under **V
 
 ## Adjust the document font size
 
-Use **View → Font Size** to change the text in the tree, value editor and XML source. Press **Ctrl+=** or **Ctrl++** to enlarge it, **Ctrl+-** to reduce it, and **Ctrl+0** to return to the default. BranchXML remembers your choice the next time you open it.
+In the tree or XML source, hold **Ctrl** and scroll the mouse wheel up to enlarge the text or down to reduce it. Both views and the value editor share the same size. You can also use **View → Font Size**, press **Ctrl+=** or **Ctrl++** to enlarge the text, **Ctrl+-** to reduce it, or **Ctrl+0** to restore the default. BranchXML remembers your choice the next time you open it.
 
 ## Run from source
 
