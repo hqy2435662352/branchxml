@@ -12,7 +12,9 @@ If you use Microsoft XML Notepad on Windows, the two-column layout will look fam
 
 For amd64 or arm64, download the same `.deb`. It contains Python code and application resources and is marked `Architecture: all`. Your distribution must provide the runtime dependencies for your architecture, including GTK 4.12 or later.
 
-BranchXML 0.1.0 has been tested on **Ubuntu 24.04 LTS and 26.04 LTS (amd64)**. From the directory containing the downloaded `.deb`, run
+BranchXML 0.1.0 has been tested on **Ubuntu 24.04 LTS and 26.04 LTS (amd64 and arm64)**. Both ARM64 runners installed the published `.deb` and opened XML from the desktop launcher on Wayland. Saving an edit changed only the selected attribute. Undoing the edit and saving restored the file byte for byte. [ARM64 test on Ubuntu 24.04.5 and 26.04.1](https://github.com/hqy2435662352/branchxml/actions/runs/45737846031)
+
+From the directory containing the downloaded `.deb`, run
 
 ```sh
 sudo apt install ./branchxml_0.1.0_all.deb
@@ -110,7 +112,7 @@ From the repository root in an Ubuntu graphical session, run the full suite for 
 /usr/bin/python3 -m unittest discover -s prototypes/gtk
 ```
 
-For document I/O and undo tests alone, run `/usr/bin/python3 prototypes/gtk/test_document.py`. Chinese candidate selection, Tab navigation and Esc cancellation have also been checked on Wayland with Fcitx 4 and Sogou Pinyin.
+For document I/O and undo tests alone, run `/usr/bin/python3 prototypes/gtk/test_document.py`. Chinese candidate selection, Tab navigation and Esc cancellation have also been checked on amd64 using Wayland, Fcitx 4 and Sogou Pinyin.
 
 For an isolated graphical test session, run `packaging/test-wayland.sh` with Sway and D-Bus installed. Build the Debian package, user-installable source archive and SHA-256 checksums with `/usr/bin/python3 packaging/build_release.py`. Outputs go to `dist/`.
 

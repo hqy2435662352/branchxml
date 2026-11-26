@@ -12,7 +12,9 @@
 
 amd64 和 arm64 下载同一个 `.deb`。包中包含 Python 程序和应用资源，架构字段为 `Architecture: all`。发行版需要为本机架构提供相应依赖，其中包括 GTK 4.12 或更高版本。
 
-BranchXML 0.1.0 已在 **amd64 架构的 Ubuntu 24.04 LTS 和 26.04 LTS** 上实测。在保存 `.deb` 安装包的目录执行
+BranchXML 0.1.0 已在 **Ubuntu 24.04 LTS 和 26.04 LTS** 上实测，两个版本均覆盖 **amd64 和 arm64**。两个 ARM64 环境都安装了发布页的 `.deb`，通过 Wayland 会话中的桌面启动器打开了 XML。改值并保存后，只有选中的属性值发生变化。撤销后再保存，文件与原件逐字节一致。[Ubuntu 24.04.5 和 26.04.1 的 ARM64 实测记录](https://github.com/hqy2435662352/branchxml/actions/runs/45737846031)
+
+在保存 `.deb` 安装包的目录执行
 
 ```sh
 sudo apt install ./branchxml_0.1.0_all.deb
@@ -110,7 +112,7 @@ Ctrl+Z 撤销，Ctrl+Shift+Z 或 Ctrl+Y 重做。连续用 Tab 改几个值时�
 /usr/bin/python3 -m unittest discover -s prototypes/gtk
 ```
 
-只检查文档读写和撤销逻辑时，可以运行 `/usr/bin/python3 prototypes/gtk/test_document.py`。中文输入另在 Wayland 会话中用 Fcitx 4 和搜狗拼音验证过连续选词、Tab 切换和 Esc 取消。
+只检查文档读写和撤销逻辑时，可以运行 `/usr/bin/python3 prototypes/gtk/test_document.py`。中文输入另在 amd64 的 Wayland 会话中用 Fcitx 4 和搜狗拼音验证过连续选词、Tab 切换和 Esc 取消。
 
 安装 Sway 和 D-Bus 后，运行 `packaging/test-wayland.sh` 可在独立的 Wayland 会话里测试。运行 `/usr/bin/python3 packaging/build_release.py` 可在 `dist/` 生成 Debian 安装包、可按用户安装的源码包及 SHA-256 校验文件。
 
